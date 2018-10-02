@@ -21,18 +21,24 @@ typedef CGAL::First_of_pair_property_map<PointVectorPair> Point_map;
 typedef CGAL::Second_of_pair_property_map<PointVectorPair> Vector_map;
 typedef CGAL::Polyhedron_3<Kernel> Polyhedron;
 
-int main() {
-    //cv::Mat depth = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/Depth57429_Theta334_Phi47.exr");
-    cv::Mat depth = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/suzanne.png");
-    cv::resize(depth, depth, cv::Size(0, 0), 0.125, 0.125);
-    std::cout << "width: " << depth.cols << " height: " << depth.rows << std::endl;
+int main(int argc, char** argv) {
+
+    double max_depth = 150;
+    if (argc > 1) {
+        max_depth = std::stoi(argv[1]);
+        std::cout << "arg max_depth: " << max_depth << std::endl;
+    }
+    //cv::Mat depth_img = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/Depth57429_Theta334_Phi47.exr");
+    cv::Mat depth_img = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/suzanne.png");
+    cv::resize(depth_img, depth_img, cv::Size(0, 0), 0.5, 0.5);
+    std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
     double phi = 47.0 / 180 * M_PI;
     double theta = 334.0 / 180 * M_PI;
     double fov = 90.0;
 
-    double cx = depth.cols / 2.0;
-    double cy = depth.rows / 2.0;
+    double cx = depth_img.cols / 2.0;
+    double cy = depth_img.rows / 2.0;
 
     double radius = 26;
     double camX = radius * cos(theta) * cos(phi);
@@ -47,25 +53,36 @@ int main() {
 
     //std::cout << T_cam << std::endl;
     cv::Mat z;
-    cv::Mat x(depth.rows, depth.cols, CV_64FC1);
-    cv::Mat y(depth.rows, depth.cols, CV_64FC1);
+    cv::Mat x(depth_img.rows, depth_img.cols, CV_64FC1);
+    cv::Mat y(depth_img.rows, depth_img.cols, CV_64FC1);
 
-    depth.convertTo(z, CV_64FC1);
+    depth_img.convertTo(z, CV_64FC1);
 
-    double constant_x = 2 * tan(fov/2.0) / depth.cols;
+    double constant_x = 2 * tan(fov/2.0) / depth_img.cols;
     double constant_y = constant_x; //assume uniform pinhole model
-
+    double greatest_z = 0;
+    double smallest_z = 1000;
     for (int v=0; v<z.rows; v++) {
         for (int u=0; u<z.cols;u++) {
-            x.at<double>(v, u) = (u - cx) * z.at<double>(v, u) * constant_x;
-            y.at<double>(v, u) = (v - cy) * z.at<double>(v, u) * constant_y;
+            double depth = z.at<double>(v, u);
+            x.at<double>(v, u) = (u - cx) * depth * constant_x;
+            y.at<double>(v, u) = (v - cy) * depth * constant_y;
+            if (depth > greatest_z) greatest_z = depth;
+            if (depth < smallest_z) smallest_z = depth;
         }
     }
 
+    std::cout << "maximum depth: " << greatest_z << "; smallest depth: " << smallest_z << std::endl;
+
     std::vector<PointVectorPair> points;
+    int discarded = 0;
 
     for (int v=0; v<z.rows; v++) {
         for (int u=0; u<z.cols;u++) {
+            if (z.at<double>(v, u) > max_depth) {
+                discarded++;
+                continue;
+            }
             double px = x.at<double>(v, u);
             double py = y.at<double>(v, u);
             double pz = z.at<double>(v, u);
@@ -74,6 +91,12 @@ int main() {
             points.push_back(PointVectorPair(point, n));
         }
     }
+    if (points.size() == 0) {
+        std::cout << "no points to process" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    std::cout << "processing " << points.size() << " points (discarded " << discarded << ")" << std::endl;
 
 
     std::cout << "estimating normals" << std::endl;
@@ -90,6 +113,7 @@ int main() {
     std::cout << "computing implicit surface" << std::endl;
     Polyhedron outputMesh;
     if (CGAL::poisson_surface_reconstruction_delaunay(points.begin(), points.end(), Point_map(), Vector_map(), outputMesh, average_spacing)) {
+        std::cout << "writing mesh" << std::endl;
         std::ofstream of("output_mesh.off");
         of << outputMesh;
     } else {
