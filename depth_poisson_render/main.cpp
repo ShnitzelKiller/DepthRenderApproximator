@@ -10,7 +10,6 @@
 #include <CGAL/poisson_surface_reconstruction.h>
 #include <CGAL/Polyhedron_3.h>
 #include <CGAL/compute_average_spacing.h>
-#include <map>
 
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;

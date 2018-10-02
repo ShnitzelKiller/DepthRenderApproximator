@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.12)
+project(points_from_depth)
+
+set(CMAKE_CXX_STANDARD 14)
+
+find_package(OpenCV REQUIRED)
+find_package(Eigen3 REQUIRED)
+
+include_directories(${EIGEN3_INCLUDE_DIRS})
+add_executable(points_from_depth main.cpp CameraUtils.hpp)
+
+target_link_libraries(points_from_depth ${OpenCV_LIBS})
