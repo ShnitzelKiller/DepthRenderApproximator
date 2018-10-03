@@ -11,8 +11,9 @@ int main(int argc, char** argv) {
         std::cout << "arg max_depth: " << max_depth << std::endl;
     }
 
-    cv::Mat depth_img = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/suzanne.png");
-    cv::resize(depth_img, depth_img, cv::Size(0, 0), 0.5, 0.5);
+    cv::Mat depth_img = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/tabledepth.png");
+    depth_img = 127 - depth_img;
+    cv::resize(depth_img, depth_img, cv::Size(0, 0), 0.125, 0.125);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
     double phi = 47.0 / 180 * M_PI;
@@ -57,7 +58,7 @@ int main(int argc, char** argv) {
     int discarded = 0;
     std::ofstream of("../output_mesh.obj");
 
-    int index = 0;
+    int index = 1;
     for (int v=0; v<z.rows; v++) {
         for (int u=0; u<z.cols;u++) {
             if (z.at<double>(v, u) > max_depth) {
