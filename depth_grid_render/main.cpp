@@ -4,15 +4,21 @@
 #include <Eigen/Dense>
 
 int main(int argc, char** argv) {
-
-    double max_depth = 150;
+    std::string filename = "/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/maxdepth100/Depth38809_Theta165_Phi48_S.exr";
+    double max_depth = 1;
     if (argc > 1) {
-        max_depth = std::stoi(argv[1]);
-        std::cout << "arg max_depth: " << max_depth << std::endl;
+        filename = argv[1];
+        if (argc > 2) {
+            max_depth = std::stoi(argv[2]);
+            std::cout << "arg max_depth: " << max_depth << std::endl;
+        }
+    } else {
+        std::cout << "Usage: " << argv[0] << " filename [max_depth]" << std::endl;
     }
 
+
     //cv::Mat depth_img = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/tabledepth.png");
-    cv::Mat depth_img = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/maxdepth100/Depth38809_Theta165_Phi48_S.exr", cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
+    cv::Mat depth_img = cv::imread(filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
     //cv::Mat depth_img = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/Depth57429_Theta334_Phi47.exr", cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
     depth_img = max_depth-depth_img;
     cv::resize(depth_img, depth_img, cv::Size(0, 0), 0.25, 0.25);
