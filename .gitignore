@@ -1,2 +1,7 @@
 **/.DS_STORE
 .DS_STORE
+**/cmake-build-debug/
+**/.idea/
+*.log
+*.exr
+*~
