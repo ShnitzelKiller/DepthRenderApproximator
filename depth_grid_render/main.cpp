@@ -2,6 +2,8 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #include <Eigen/Dense>
+#include <boost/filesystem.hpp>
+using namespace boost::filesystem;
 
 int main(int argc, char** argv) {
     std::string filename = "/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/maxdepth100/Depth38809_Theta165_Phi48_S.exr";
@@ -16,7 +18,6 @@ int main(int argc, char** argv) {
         std::cout << "Usage: " << argv[0] << " filename [max_depth]" << std::endl;
     }
 
-
     //cv::Mat depth_img = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/tabledepth.png");
     cv::Mat depth_img = cv::imread(filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
     //cv::Mat depth_img = cv::imread("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/Depth57429_Theta334_Phi47.exr", cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
@@ -30,7 +31,7 @@ int main(int argc, char** argv) {
 
     double phi = 47.0 / 180 * M_PI;
     double theta = 334.0 / 180 * M_PI;
-    double fov = 38.58 / 180 * M_PI;
+    double fov = 45 / 180 * M_PI;
 
     double cx = depth_img.cols / 2.0;
     double cy = depth_img.rows / 2.0;
@@ -54,6 +55,7 @@ int main(int argc, char** argv) {
     int index = 1;
     cv::Mat inds(depth_img.rows, depth_img.cols, CV_64FC1);
     int discarded = 0;
+    
     std::ofstream of("../output_mesh.obj");
     for (int v=0; v<depth_img.rows; v++) {
         for (int u=0; u<depth_img.cols;u++) {
@@ -95,7 +97,12 @@ int main(int argc, char** argv) {
 
     std::cout << "finished creating mesh" << std::endl;
 
-    //system("mitsuba /Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/depth_grid_render/scene.xml");
+    path inpath = filename;
+    auto file = inpath.filename();
+    path outpath = "../output/";
+    outpath /= file;
+    outpath += ".exr";
+    system(("mitsuba ../depthgrid.xml -o " + (outpath).string()).c_str());
 
     return 0;
 }
