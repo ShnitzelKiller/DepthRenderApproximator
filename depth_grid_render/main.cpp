@@ -2,15 +2,13 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #include <Eigen/Dense>
-#include <boost/filesystem.hpp>
 #include "CameraUtils.hpp"
 #include "XMLWriter.hpp"
-#include "UnderscoreString.hpp"
 #include <sstream>
 
 #define indices(i, width) (i-1) / width, (i-1) % width
 
-using namespace boost::filesystem;
+//using namespace boost::filesystem;
 
 std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double, 4, 4> const &fromWorld, double alpha) {
     using namespace std;
@@ -22,7 +20,7 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double,
         << fromWorld(3, 0) << " " << fromWorld(3, 1) << " " << fromWorld(3, 2) << " " << fromWorld(3, 3);
 
     auto scene = make_shared<XMLElement>("scene");
-    scene->AddProperty("version", "0.5.0");
+    scene->AddProperty("version", "0.6.0");
 
     auto camera = make_shared<XMLElement>("sensor", "perspective");
     auto sampler = make_shared<XMLElement>("sampler", "independent");
@@ -60,43 +58,40 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double,
 
 int main(int argc, char** argv) {
     std::string filename = "/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/maxdepth100/Depth00002_Theta228_Phi52_ALL.exr";
+    std::string envmap = "/bugger.exr";
     const std::string mesh_path = "../output_mesh.obj";
     const std::string scene_path = "../scene_gen.xml";
-    const bool render = false;
     const double scale_factor = 0.5;
-    const double alpha = 0.4;
-    const double occlusion_threshold = 1;
+    double phi = 52.0 / 180 * M_PI;
+    double theta = 228.0 / 180 * M_PI;
+    double alpha = 0.4;
+    const double occlusion_threshold = 1; //TODO: actually use this
 
     double max_depth = 100;
-    if (argc > 1) {
+    if (argc > 5) {
         filename = argv[1];
-        if (argc > 2) {
-            max_depth = std::stoi(argv[2]);
-            std::cout << "arg max_depth: " << max_depth << std::endl;
-        }
+	envmap = argv[2];
+	theta = std::stod(argv[3]) / 180.0 * M_PI;
+	phi = std::stod(argv[4]) / 180.0 * M_PI;
+	alpha = std::stod(argv[5]) / 100.0;
+	if (argc > 6) {
+	  max_depth = std::stoi(argv[6]);
+	  std::cout << "arg max_depth: " << max_depth << std::endl;
+	}
     } else {
-        std::cout << "Usage: " << argv[0] << " filename [max_depth]" << std::endl;
+        std::cout << "Usage: " << argv[0] << " filename envmap theta phi alpha [max_depth]" << std::endl;
+	return 0;
     }
-
-
-    //parse filename
-    path inpath = filename;
-    auto file = inpath.filename();
-    std::string filename_string = file.string();
-    std::istringstream is(filename_string);
-    std::vector<std::string> results((std::istream_iterator<UnderscoreString>(is)), std::istream_iterator<UnderscoreString>());
-    for (const auto &result : results) {
-        std::cout << result << std::endl;
-    }
-
 
     cv::Mat depth_img = cv::imread(filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
+    if (!depth_img.data) {
+      std::cout << "image not found: " << filename << std::endl;
+      return 1;
+    }
     depth_img = max_depth * (1-depth_img);
     cv::resize(depth_img, depth_img, cv::Size(0, 0), scale_factor, scale_factor);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
-    const double phi = 52.0 / 180 * M_PI;
-    const double theta = 228.0 / 180 * M_PI;
     const double fov = 45.0 / 180 * M_PI;
 
     const double cx = depth_img.cols / 2.0;
@@ -179,17 +174,11 @@ int main(int argc, char** argv) {
     std::cout << "finished creating mesh " << mesh_path << std::endl;
     of.close();
 
-    auto scene = buildScene("/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/hdr_maps/canada_montreal_thea.exr", lookat, alpha);
+    auto scene = buildScene(envmap, lookat, alpha);
     std::ofstream sceneof(scene_path);
     scene->SaveXML(sceneof);
     sceneof.close();
 
-    if (render) {
-        path outpath = "../output/";
-        outpath /= file;
-        outpath += ".exr";
-        system(("mitsuba " + scene_path + " -o " + (outpath).string()).c_str());
-    }
-
+    std::cout << "wrote scene file to " << scene_path << std::endl;
     return 0;
 }

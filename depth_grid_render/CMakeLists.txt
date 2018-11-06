@@ -9,10 +9,8 @@ set(CMAKE_IGNORE_PATH /local1)
 
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(Boost COMPONENTS filesystem REQUIRED)
 
 include_directories(${EIGEN3_INCLUDE_DIRS})
 
-add_executable(depth_grid_render main.cpp CameraUtils.hpp XMLWriter.hpp UnderscoreString.hpp)
-message(STATUS ${Boost_LIBRARIES})
-target_link_libraries(depth_grid_render ${OpenCV_LIBS} ${Boost_LIBRARIES})
+add_executable(depth_grid_render main.cpp CameraUtils.hpp XMLWriter.hpp)
+target_link_libraries(depth_grid_render ${OpenCV_LIBS})
