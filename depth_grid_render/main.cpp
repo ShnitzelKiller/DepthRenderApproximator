@@ -23,11 +23,11 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double,
     scene->AddProperty("version", "0.6.0");
 
     auto camera = make_shared<XMLElement>("sensor", "perspective");
-    auto sampler = make_shared<XMLElement>("sampler", "independent");
+    auto sampler = make_shared<XMLElement>("sampler", "ldsampler");
     sampler->AddChild(make_shared<XMLElement>("integer", "sampleCount", "128"));
     camera->AddChild(sampler);
     camera->AddChild(make_shared<XMLElement>("float", "fov", "45"));
-    auto film = make_shared<XMLElement>("film", "hdrfilm");
+    auto film = make_shared<XMLElement>("film", "ldrfilm");
     film->AddChild(make_shared<XMLElement>("integer", "width", "960"));
     film->AddChild(make_shared<XMLElement>("integer", "height", "540"));
     film->AddChild(make_shared<XMLElement>("boolean", "banner", "false"));
