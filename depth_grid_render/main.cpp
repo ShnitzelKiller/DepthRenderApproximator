@@ -6,10 +6,6 @@
 #include "XMLWriter.hpp"
 #include <sstream>
 
-#define indices(i, width) (i-1) / width, (i-1) % width
-
-//using namespace boost::filesystem;
-
 std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double, 4, 4> const &fromWorld, double alpha) {
     using namespace std;
 
@@ -65,9 +61,10 @@ int main(int argc, char** argv) {
     double phi = 52.0 / 180 * M_PI;
     double theta = 228.0 / 180 * M_PI;
     double alpha = 0.4;
-    const double occlusion_threshold = 1; //TODO: actually use this
+    double occlusion_threshold = 10;
+    const double max_depth = 100;
 
-    double max_depth = 100;
+    //parse arguments
     if (argc > 5) {
         filename = argv[1];
 	envmap = argv[2];
@@ -75,11 +72,11 @@ int main(int argc, char** argv) {
 	phi = std::stod(argv[4]) / 180.0 * M_PI;
 	alpha = std::stod(argv[5]) / 100.0;
 	if (argc > 6) {
-	  max_depth = std::stoi(argv[6]);
-	  std::cout << "arg max_depth: " << max_depth << std::endl;
+	  occlusion_threshold = std::stoi(argv[6]);
+	  std::cout << "arg occlusion_threshold: " << occlusion_threshold << std::endl;
 	}
     } else {
-        std::cout << "Usage: " << argv[0] << " filename envmap theta phi alpha [max_depth]" << std::endl;
+        std::cout << "Usage: " << argv[0] << " filename envmap theta phi alpha [occlusion_threshold]" << std::endl;
 	return 0;
     }
 
@@ -116,7 +113,7 @@ int main(int argc, char** argv) {
     double greatest_y = std::numeric_limits<double>::min();
     double smallest_y = std::numeric_limits<double>::max();
     int index = 1;
-    cv::Mat inds(depth_img.rows, depth_img.cols, CV_64FC1);
+    cv::Mat inds(depth_img.rows, depth_img.cols, CV_32FC1);
     int discarded = 0;
     
     std::ofstream of(mesh_path);
@@ -125,7 +122,7 @@ int main(int argc, char** argv) {
             double depth = depth_img.at<float>(v, u);
             if (depth >= max_depth) {
                 discarded++;
-                inds.at<double>(v, u) = -1;
+                inds.at<float>(v, u) = -1;
                 continue;
             }
             double py = (v - cy) * depth  * constant_y;
@@ -137,7 +134,7 @@ int main(int argc, char** argv) {
             double px = (u - cx) * depth  * constant_x;
 
             of << "v " << -px << ' ' << -py << ' ' << depth << std::endl;
-            inds.at<double>(v, u) = index;
+            inds.at<float>(v, u) = index;
             index++;
         }
     }
@@ -150,22 +147,28 @@ int main(int argc, char** argv) {
 
     for (int v=0; v<depth_img.rows-1; v++) {
         for (int u=0; u<depth_img.cols-1;u++) {
-            int i00 = (int) round(inds.at<double>(v, u));
-            int i01 = (int) round(inds.at<double>(v, u+1));
-            int i10 = (int) round(inds.at<double>(v+1, u));
-            int i11 = (int) round(inds.at<double>(v+1, u+1));
+            int i00 = (int) round(inds.at<float>(v, u));
+            int i01 = (int) round(inds.at<float>(v, u+1));
+            int i10 = (int) round(inds.at<float>(v+1, u));
+            int i11 = (int) round(inds.at<float>(v+1, u+1));
             if (i00 <= 0 || i01 <= 0 || i10 <= 0 || i11 <= 0) continue;
             //compute bounds
-            /*
-            double mindepth = depth_img.at<double>(indices(i00, depth_img.rows));
-            double maxdepth = depth_img.at<double>(indices(i00, depth_img.rows));
-            mindepth = std::min(mindepth, depth_img.at<double>(indices(i01, depth_img.rows)));
-            mindepth = std::min(mindepth, depth_img.at<double>(indices(i11, depth_img.rows)));
-            mindepth = std::min(mindepth, depth_img.at<double>(indices(i10, depth_img.rows)));
-            maxdepth = std::max(maxdepth, depth_img.at<double>(indices(i01, depth_img.rows)));
-            maxdepth = std::max(maxdepth, depth_img.at<double>(indices(i11, depth_img.rows)));
-            maxdepth = std::max(maxdepth, depth_img.at<double>(indices(i10, depth_img.rows)));
-            if (std::fabs(mindepth - maxdepth) > occlusion_threshold) continue; */
+
+            float depth00 = depth_img.at<float>(v, u);
+            float depth01 = depth_img.at<float>(v, u+1);
+            float depth10 = depth_img.at<float>(v+1, u);
+            float depth11 = depth_img.at<float>(v+1, u+1);
+
+            float mindepth = depth00;
+            float maxdepth = depth00;
+
+            mindepth = std::min(mindepth, depth01);
+            mindepth = std::min(mindepth, depth10);
+            mindepth = std::min(mindepth, depth11);
+            maxdepth = std::max(maxdepth, depth01);
+            maxdepth = std::max(maxdepth, depth10);
+            maxdepth = std::max(maxdepth, depth11);
+            if (maxdepth - mindepth > occlusion_threshold) continue;
             of << "f " << i00 << ' ' << i11 << ' ' << i01 << std::endl;
             of << "f " << i00 << ' ' << i10 << ' ' << i11 << std::endl;
         }
