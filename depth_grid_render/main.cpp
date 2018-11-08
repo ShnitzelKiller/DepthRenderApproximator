@@ -4,6 +4,7 @@
 #include <Eigen/Dense>
 #include "CameraUtils.hpp"
 #include "XMLWriter.hpp"
+#include "OBJWriter.hpp"
 #include <sstream>
 
 void usage(char* program_name) {
@@ -11,7 +12,7 @@ void usage(char* program_name) {
     exit(0);
 }
 
-std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double, 4, 4> const &fromWorld, double alpha, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d()) {
+std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 4, 4> const &fromWorld, float alpha, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d()) {
     using namespace std;
 
     ostringstream mat;
@@ -21,7 +22,7 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double,
         << fromWorld(3, 0) << " " << fromWorld(3, 1) << " " << fromWorld(3, 2) << " " << fromWorld(3, 3);
 
     auto scene = make_shared<XMLElement>("scene");
-    scene->AddProperty("version", "0.6.0");
+    scene->AddProperty("version", scene_version);
 
     auto camera = make_shared<XMLElement>("sensor", "perspective");
     auto sampler = make_shared<XMLElement>("sampler", "ldsampler");
@@ -72,20 +73,41 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double,
     return scene;
 }
 
+template <typename T>
+void displace(cv::Mat &inds, const OBJMesh<T> &mesh, OBJMesh<T> &outMesh, int u, int v, T maxdist, T fac) {
+    int index = (int) round(inds.at<float>(v, u));
+    const Vector3<T> vert = mesh.GetVertex(index);
+    Vector3<T> &outVert = outMesh.GetVertex(index);
+    std::vector<int> neighbors;
+    neighbors.push_back((int) round(inds.at<float>(v, u+1)));
+    neighbors.push_back((int) round(inds.at<float>(v+1, u)));
+    neighbors.push_back((int) round(inds.at<float>(v-1, u)));
+    neighbors.push_back((int) round(inds.at<float>(v, u-1)));
+
+    for (const int i : neighbors) {
+        const Vector3<T> &neighbor = mesh.GetVertex(i);
+        if (std::fabs(neighbor[2] - vert[2]) > maxdist) {
+            outVert = outVert + (vert - neighbor) * fac;
+        }
+    }
+
+}
+
 int main(int argc, char** argv) {
     std::string filename = "/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/maxdepth100/Depth00002_Theta228_Phi52_ALL.exr";
     std::string envmap = "/bugger.exr";
     const std::string mesh_path = "../output_mesh.obj";
     const std::string scene_path = "../scene_gen.xml";
-    const double scale_factor = 0.5;
-    double phi = 52.0 / 180 * M_PI;
-    double theta = 228.0 / 180 * M_PI;
-    double alpha = 0.4;
-    double light_theta = 0;
-    double light_phi = 0;
-    const double light_radius = 26;
-    double occlusion_threshold = 1;
-    const double max_depth = 100;
+    const float scale_factor = 0.5;
+    float phi = 0;
+    float theta = 0;
+    float alpha = 0.4;
+    float light_theta = 0;
+    float light_phi = 0;
+    const float light_radius = 26;
+    float occlusion_threshold = 1;
+    const float max_depth = 100;
+    float displacement = 0;
     bool light = false;
     std::string scene_version("0.6.0");
 
@@ -93,15 +115,15 @@ int main(int argc, char** argv) {
     if (argc > 5) {
         filename = argv[1];
 	envmap = argv[2];
-	theta = std::stod(argv[3]) / 180.0 * M_PI;
-	phi = std::stod(argv[4]) / 180.0 * M_PI;
-	alpha = std::stod(argv[5]) / 10000.0;
+	theta = std::stof(argv[3]) / 180.0f * ((float) M_PI);
+	phi = std::stof(argv[4]) / 180.0f * ((float) M_PI);
+	alpha = std::stof(argv[5]) / 10000.0f;
 	if (argc > 6) {
 	    if (argc <= 7) {
 	        usage(argv[0]);
 	    }
-	    light_theta = std::stod(argv[6]) / 180 * M_PI;
-	    light_phi = std::stod(argv[7]) / 180 * M_PI;
+	    light_theta = std::stof(argv[6]) / 180.0f * ((float) M_PI);
+	    light_phi = std::stof(argv[7]) / 180.0f * ((float) M_PI);
 	    light = true;
 	    if (argc > 8) {
 	      occlusion_threshold = std::stoi(argv[8]);
@@ -125,55 +147,59 @@ int main(int argc, char** argv) {
     cv::resize(depth_img, depth_img, cv::Size(0, 0), scale_factor, scale_factor);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
-    const double fov = 45.0 / 180 * M_PI;
+    const float fov = 45.0f / 180 * ((float) M_PI);
 
-    const double cx = depth_img.cols / 2.0;
-    const double cy = depth_img.rows / 2.0;
+    const float cx = depth_img.cols / 2.0f;
+    const float cy = depth_img.rows / 2.0f;
 
-    const double radius = 26;
-    const double camZ = radius * sin(theta) * cos(phi);
-    const double camX = radius * cos(theta) * cos(phi);
-    const double camY = radius * sin(phi);
+    const float radius = 26;
+    const float camZ = radius * sin(theta) * cos(phi);
+    const float camX = radius * cos(theta) * cos(phi);
+    const float camY = radius * sin(phi);
 
-    const double lightZ = light_radius * sin(light_theta) * cos(light_phi);
-    const double lightX = light_radius * cos(light_theta) * cos(light_phi);
-    const double lightY = light_radius * sin(light_phi);
+    const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
+    const float lightX = light_radius * cos(light_theta) * cos(light_phi);
+    const float lightY = light_radius * sin(light_phi);
 
-    const Eigen::Matrix<double, 3, 1> center(0, 1, 0);
-    const Eigen::Matrix<double, 3, 1> up(0, 1, 0);
-    const Eigen::Matrix<double, 3, 1> eye(camX, camY, camZ);
+    const Eigen::Matrix<float, 3, 1> center(0, 1, 0);
+    const Eigen::Matrix<float, 3, 1> up(0, 1, 0);
+    const Eigen::Matrix<float, 3, 1> eye(camX, camY, camZ);
 
-    Eigen::Matrix<double, 4, 4> lookat = geom::lookAt(eye, center, up).inverse();
+    Eigen::Matrix<float, 4, 4> lookat = geom::lookAt(eye, center, up).inverse();
 
-    double constant_x = 2 * tan(fov/2.0) / depth_img.cols;
-    double constant_y = constant_x; //assume uniform pinhole model
+    float constant_x = 2 * ((float)tan(fov/2.0)) / depth_img.cols;
+    float constant_y = constant_x; //assume uniform pinhole model
 
-    double greatest_z = std::numeric_limits<double>::min();
-    double smallest_z = std::numeric_limits<double>::max();
-    double greatest_y = std::numeric_limits<double>::min();
-    double smallest_y = std::numeric_limits<double>::max();
+    float greatest_z = std::numeric_limits<float>::min();
+    float smallest_z = std::numeric_limits<float>::max();
+    float greatest_y = std::numeric_limits<float>::min();
+    float smallest_y = std::numeric_limits<float>::max();
     int index = 1;
     cv::Mat inds(depth_img.rows, depth_img.cols, CV_32FC1);
     int discarded = 0;
     
     std::ofstream of(mesh_path);
+    OBJMesh<float> mesh;
+
     for (int v=0; v<depth_img.rows; v++) {
         for (int u=0; u<depth_img.cols;u++) {
-            double depth = depth_img.at<float>(v, u);
+            float depth = depth_img.at<float>(v, u);
             if (depth >= max_depth) {
                 discarded++;
                 inds.at<float>(v, u) = -1;
                 continue;
             }
-            double py = (v - cy) * depth  * constant_y;
+            float py = (v - cy) * depth  * constant_y;
 
             greatest_z = std::max(greatest_z, depth);
             smallest_z = std::min(smallest_z, depth);
             greatest_y = std::max(greatest_y, py);
             smallest_y = std::min(smallest_y, py);
-            double px = (u - cx) * depth  * constant_x;
+            float px = (u - cx) * depth  * constant_x;
 
-            of << "v " << -px << ' ' << -py << ' ' << depth << std::endl;
+            Eigen::Vector3f point(-px, -py, depth);
+            mesh.AddVertex(point);
+
             inds.at<float>(v, u) = index;
             index++;
         }
@@ -184,6 +210,7 @@ int main(int argc, char** argv) {
 
     std::cout << "processing " << depth_img.cols*depth_img.rows - discarded << " points (discarded " << discarded << ")" << std::endl;
 
+    OBJMesh<float> mesh_displaced;
 
     for (int v=0; v<depth_img.rows-1; v++) {
         for (int u=0; u<depth_img.cols-1;u++) {
@@ -208,11 +235,19 @@ int main(int argc, char** argv) {
             maxdepth = std::max(maxdepth, depth01);
             maxdepth = std::max(maxdepth, depth10);
             maxdepth = std::max(maxdepth, depth11);
-            if (maxdepth - mindepth > occlusion_threshold) continue;
-            of << "f " << i00 << ' ' << i11 << ' ' << i01 << std::endl;
-            of << "f " << i00 << ' ' << i10 << ' ' << i11 << std::endl;
+            if (maxdepth - mindepth > occlusion_threshold) {
+                //extend neighboring vertices inward
+                if (u > 0 && v > 0)
+                    displace(inds, mesh, mesh_displaced, u, v, occlusion_threshold, displacement);
+            } else {
+                mesh_displaced.AddTri(Eigen::Vector3i(i00, i11, i01));
+                mesh_displaced.AddTri(Eigen::Vector3i(i00, i10, i11));
+            }
         }
     }
+
+    mesh_displaced.SaveOBJ(of);
+    //mesh.SaveOBJ(of);
 
     std::cout << "finished creating mesh " << mesh_path << std::endl;
     of.close();
