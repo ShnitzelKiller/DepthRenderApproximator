@@ -7,11 +7,11 @@
 #include <sstream>
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [light_theta light_phi [occlusion_threshold]]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [light_theta light_phi [occlusion_threshold] [scene_format_version]]" << std::endl;
     exit(0);
 }
 
-std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double, 4, 4> const &fromWorld, double alpha, bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d()) {
+std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double, 4, 4> const &fromWorld, double alpha, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d()) {
     using namespace std;
 
     ostringstream mat;
@@ -37,7 +37,7 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double,
     auto shape = make_shared<XMLElement>("shape", "obj");
     shape->AddChild(make_shared<XMLElement>("string", "filename", "output_mesh.obj"));
     auto bsdf = make_shared<XMLElement>("bsdf", "roughplastic");
-    bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha))); //TODO: set this based on filename
+    bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
     shape->AddChild(bsdf);
 
     auto emitter = make_shared<XMLElement>("emitter", "envmap");
@@ -63,7 +63,9 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<double,
         translate->AddProperty("y", std::to_string(light_pos[1]));
         translate->AddProperty("z", std::to_string(light_pos[2]));
         light_trans->AddChild(translate);
+	light_trans->AddChild(matrix); //also transform into camera space
         light->AddChild(light_trans);
+	light->AddChild(make_shared<XMLElement>("spectrum", "intensity", "100"));
         scene->AddChild(light);
     }
 
@@ -85,6 +87,7 @@ int main(int argc, char** argv) {
     double occlusion_threshold = 1;
     const double max_depth = 100;
     bool light = false;
+    std::string scene_version("0.6.0");
 
     //parse arguments
     if (argc > 5) {
@@ -92,18 +95,21 @@ int main(int argc, char** argv) {
 	envmap = argv[2];
 	theta = std::stod(argv[3]) / 180.0 * M_PI;
 	phi = std::stod(argv[4]) / 180.0 * M_PI;
-	alpha = std::stod(argv[5]) / 100.0;
+	alpha = std::stod(argv[5]) / 10000.0;
 	if (argc > 6) {
 	    if (argc <= 7) {
 	        usage(argv[0]);
 	    }
-        light_theta = std::stod(argv[6]) / 180 * M_PI;
-        light_phi = std::stod(argv[7]) / 180 * M_PI;
-        light = true;
+	    light_theta = std::stod(argv[6]) / 180 * M_PI;
+	    light_phi = std::stod(argv[7]) / 180 * M_PI;
+	    light = true;
 	    if (argc > 8) {
-            occlusion_threshold = std::stoi(argv[8]);
-            std::cout << "arg occlusion_threshold: " << occlusion_threshold << std::endl;
-        }
+	      occlusion_threshold = std::stoi(argv[8]);
+	      std::cout << "arg occlusion_threshold: " << occlusion_threshold << std::endl;
+	      if (argc > 9) {
+		scene_version = argv[9];
+	      }
+	    }
 	}
     } else {
         usage(argv[0]);
@@ -211,7 +217,7 @@ int main(int argc, char** argv) {
     std::cout << "finished creating mesh " << mesh_path << std::endl;
     of.close();
 
-    auto scene = buildScene(envmap, lookat, alpha, light, Eigen::Vector3d(lightX, lightY, lightZ));
+    auto scene = buildScene(envmap, lookat, alpha, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
     std::ofstream sceneof(scene_path);
     scene->SaveXML(sceneof);
     sceneof.close();
