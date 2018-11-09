@@ -8,7 +8,7 @@
 #include <sstream>
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [light_theta light_phi [occlusion_threshold] [scene_format_version]]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [light_theta light_phi [occlusion_threshold] [displacement_factor] [scene_format_version]]" << std::endl;
     exit(0);
 }
 
@@ -22,7 +22,7 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 
         << fromWorld(3, 0) << " " << fromWorld(3, 1) << " " << fromWorld(3, 2) << " " << fromWorld(3, 3);
 
     auto scene = make_shared<XMLElement>("scene");
-    scene->AddProperty("version", scene_version);
+    scene->AddProperty("version", std::move(scene_version));
 
     auto camera = make_shared<XMLElement>("sensor", "perspective");
     auto sampler = make_shared<XMLElement>("sampler", "ldsampler");
@@ -76,6 +76,7 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 
 template <typename T>
 void displace(cv::Mat &inds, const OBJMesh<T> &mesh, OBJMesh<T> &outMesh, int u, int v, T maxdist, T fac) {
     int index = (int) round(inds.at<float>(v, u));
+    if (index < 1) return;
     const Vector3<T> vert = mesh.GetVertex(index);
     Vector3<T> &outVert = outMesh.GetVertex(index);
     std::vector<int> neighbors;
@@ -83,11 +84,25 @@ void displace(cv::Mat &inds, const OBJMesh<T> &mesh, OBJMesh<T> &outMesh, int u,
     neighbors.push_back((int) round(inds.at<float>(v+1, u)));
     neighbors.push_back((int) round(inds.at<float>(v-1, u)));
     neighbors.push_back((int) round(inds.at<float>(v, u-1)));
+    //diagonal neighbors
+    /*neighbors.push_back((int) round(inds.at<float>(v+1, u+1)));
+    neighbors.push_back((int) round(inds.at<float>(v-1, u+1)));
+    neighbors.push_back((int) round(inds.at<float>(v+1, u-1)));
+    neighbors.push_back((int) round(inds.at<float>(v-1, u-1)));*/
+    bool skip = true;
+    for (const int i : neighbors) {
+        if (i < 1) skip = false;
+        if (std::fabs(mesh.GetVertex(i)[2] - vert[2]) > maxdist) skip = false;
+    }
+    if (skip) return;
 
     for (const int i : neighbors) {
+        if (i < 1) continue;
         const Vector3<T> &neighbor = mesh.GetVertex(i);
-        if (std::fabs(neighbor[2] - vert[2]) > maxdist) {
-            outVert = outVert + (vert - neighbor) * fac;
+        if (std::fabs(neighbor[2] - vert[2]) < maxdist) {
+            Vector3<T> disp = vert - neighbor;
+            disp.normalize();
+            outVert = outVert + disp * fac;
         }
     }
 
@@ -101,7 +116,7 @@ int main(int argc, char** argv) {
     const float scale_factor = 0.5;
     float phi = 0;
     float theta = 0;
-    float alpha = 0.4;
+    float alpha = 0;
     float light_theta = 0;
     float light_phi = 0;
     const float light_radius = 26;
@@ -114,28 +129,31 @@ int main(int argc, char** argv) {
     //parse arguments
     if (argc > 5) {
         filename = argv[1];
-	envmap = argv[2];
-	theta = std::stof(argv[3]) / 180.0f * ((float) M_PI);
-	phi = std::stof(argv[4]) / 180.0f * ((float) M_PI);
-	alpha = std::stof(argv[5]) / 10000.0f;
-	if (argc > 6) {
-	    if (argc <= 7) {
-	        usage(argv[0]);
-	    }
-	    light_theta = std::stof(argv[6]) / 180.0f * ((float) M_PI);
-	    light_phi = std::stof(argv[7]) / 180.0f * ((float) M_PI);
-	    light = true;
-	    if (argc > 8) {
-	      occlusion_threshold = std::stoi(argv[8]);
-	      std::cout << "arg occlusion_threshold: " << occlusion_threshold << std::endl;
-	      if (argc > 9) {
-		scene_version = argv[9];
-	      }
-	    }
-	}
+        envmap = argv[2];
+        theta = std::stof(argv[3]) / 180.0f * ((float) M_PI);
+        phi = std::stof(argv[4]) / 180.0f * ((float) M_PI);
+        alpha = std::stof(argv[5]) / 10000.0f;
+        if (argc > 6) {
+            if (argc <= 7) {
+                usage(argv[0]);
+            }
+            light_theta = std::stof(argv[6]) / 180.0f * ((float) M_PI);
+            light_phi = std::stof(argv[7]) / 180.0f * ((float) M_PI);
+            light = true;
+            if (argc > 8) {
+                occlusion_threshold = std::stoi(argv[8]);
+                std::cout << "arg occlusion_threshold: " << occlusion_threshold << std::endl;
+                if (argc > 9) {
+                    displacement = std::stof(argv[9]);
+                    if (argc > 10) {
+                        scene_version = argv[10];
+                    }
+                }
+            }
+        }
     } else {
         usage(argv[0]);
-	return 0;
+	    return 0;
     }
 
     cv::Mat depth_img = cv::imread(filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
@@ -210,8 +228,18 @@ int main(int argc, char** argv) {
 
     std::cout << "processing " << depth_img.cols*depth_img.rows - discarded << " points (discarded " << discarded << ")" << std::endl;
 
-    OBJMesh<float> mesh_displaced;
+    if (displacement > 0) {
+        std::cout << "dilating mesh boundaries" << std::endl;
+        OBJMesh<float> mesh_displaced(mesh);
+        for (int v = 1; v < depth_img.rows - 1; v++) {
+            for (int u = 1; u < depth_img.cols - 1; u++) {
+                displace(inds, mesh, mesh_displaced, u, v, occlusion_threshold, displacement);
+            }
+        }
+        mesh = mesh_displaced;
+    }
 
+    std::cout << "populating indices" << std::endl;
     for (int v=0; v<depth_img.rows-1; v++) {
         for (int u=0; u<depth_img.cols-1;u++) {
             int i00 = (int) round(inds.at<float>(v, u));
@@ -236,17 +264,15 @@ int main(int argc, char** argv) {
             maxdepth = std::max(maxdepth, depth10);
             maxdepth = std::max(maxdepth, depth11);
             if (maxdepth - mindepth > occlusion_threshold) {
-                //extend neighboring vertices inward
-                if (u > 0 && v > 0)
-                    displace(inds, mesh, mesh_displaced, u, v, occlusion_threshold, displacement);
-            } else {
-                mesh_displaced.AddTri(Eigen::Vector3i(i00, i11, i01));
-                mesh_displaced.AddTri(Eigen::Vector3i(i00, i10, i11));
+                continue;
             }
+            mesh.AddTri(Eigen::Vector3i(i00, i11, i01));
+            mesh.AddTri(Eigen::Vector3i(i00, i10, i11));
+
         }
     }
 
-    mesh_displaced.SaveOBJ(of);
+    mesh.SaveOBJ(of);
     //mesh.SaveOBJ(of);
 
     std::cout << "finished creating mesh " << mesh_path << std::endl;
