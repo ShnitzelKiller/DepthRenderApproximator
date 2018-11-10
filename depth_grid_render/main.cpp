@@ -6,10 +6,10 @@
 #include "XMLWriter.hpp"
 #include "OBJWriter.hpp"
 #include <sstream>
+#include "OptionParser.hpp"
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [light_theta light_phi [occlusion_threshold] [displacement_factor] [scene_format_version]]" << std::endl;
-    exit(0);
+    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>]" << std::endl;
 }
 
 std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 4, 4> const &fromWorld, float alpha, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d()) {
@@ -127,33 +127,41 @@ int main(int argc, char** argv) {
     std::string scene_version("0.6.0");
 
     //parse arguments
-    if (argc > 5) {
-        filename = argv[1];
-        envmap = argv[2];
-        theta = std::stof(argv[3]) / 180.0f * ((float) M_PI);
-        phi = std::stof(argv[4]) / 180.0f * ((float) M_PI);
-        alpha = std::stof(argv[5]) / 10000.0f;
-        if (argc > 6) {
-            if (argc <= 7) {
-                usage(argv[0]);
-            }
-            light_theta = std::stof(argv[6]) / 180.0f * ((float) M_PI);
-            light_phi = std::stof(argv[7]) / 180.0f * ((float) M_PI);
-            light = true;
-            if (argc > 8) {
-                occlusion_threshold = std::stoi(argv[8]);
-                std::cout << "arg occlusion_threshold: " << occlusion_threshold << std::endl;
-                if (argc > 9) {
-                    displacement = std::stof(argv[9]);
-                    if (argc > 10) {
-                        scene_version = argv[10];
-                    }
-                }
-            }
-        }
-    } else {
+
+    OptionParser parser(argc, argv);
+    std::cout << parser.getNumArguments() << " arguments" << std::endl;
+    if (parser.getNumArguments() != 5) {
         usage(argv[0]);
-	    return 0;
+        return 0;
+    }
+    filename = parser.getPositionalArgument(0);
+    envmap = parser.getPositionalArgument(1);
+    theta = std::stof(parser.getPositionalArgument(2)) / 180.0f * (float) M_PI;
+    phi = std::stof(parser.getPositionalArgument(3)) / 180.0f * (float) M_PI;
+    alpha = std::stof(parser.getPositionalArgument(4)) / 10000.0f;
+
+    if (parser.cmdOptionExists("ltheta") && parser.cmdOptionExists("lphi")) {
+        light = true;
+        light_theta = std::stof(parser.getCmdOption("ltheta")) / 180.0f * (float) M_PI;
+        light_phi = std::stof(parser.getCmdOption("lphi")) / 180.0f * (float) M_PI;
+        std::cout << "using point light with theta " << parser.getCmdOption("ltheta") << " and phi " << parser.getCmdOption("lphi") << std::endl;
+    }
+
+    if (parser.cmdOptionExists("c")) {
+        occlusion_threshold = std::stof(parser.getCmdOption("c"));
+        std::cout << "occlusion threshold: " << occlusion_threshold << std::endl;
+    }
+
+    if (parser.cmdOptionExists("d")) {
+        displacement = std::stof(parser.getCmdOption("d"));
+        if (displacement > 0) {
+            std::cout << "displacing occlusion boundaries by " << displacement << " units" << std::endl;
+        }
+    }
+
+    if (parser.cmdOptionExists("s")) {
+        scene_version = parser.getCmdOption("s");
+        std::cout << "using scene version " << scene_version << std::endl;
     }
 
     cv::Mat depth_img = cv::imread(filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
