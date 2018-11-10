@@ -156,6 +156,7 @@ int main(int argc, char** argv) {
         displacement = std::stof(parser.getCmdOption("d"));
         if (displacement > 0) {
             std::cout << "displacing occlusion boundaries by " << displacement << " units" << std::endl;
+	    std::cout << "WARNING: this looks terrible and doesn't work" << std::endl;
         }
     }
 
