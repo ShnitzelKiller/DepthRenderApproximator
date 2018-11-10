@@ -111,8 +111,8 @@ void displace(cv::Mat &inds, const OBJMesh<T> &mesh, OBJMesh<T> &outMesh, int u,
 int main(int argc, char** argv) {
     std::string filename = "/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/maxdepth100/Depth00002_Theta228_Phi52_ALL.exr";
     std::string envmap = "/bugger.exr";
-    const std::string mesh_path = "../output_mesh.obj";
-    const std::string scene_path = "../scene_gen.xml";
+    const std::string mesh_path = "output_mesh.obj";
+    const std::string scene_path = "scene_gen.xml";
     const float scale_factor = 0.5;
     float phi = 0;
     float theta = 0;
