@@ -5,6 +5,17 @@
 #include "OBJWriter.hpp"
 #include "CameraUtils.hpp"
 
+/**
+ * Displace vertex in the plane of its neighbors to fill holes
+ * @tparam T
+ * @param inds mesh indices in a 2D matrix for convenient neighbor lookup
+ * @param mesh reference OBJ Mesh structure
+ * @param outMesh OBJ mesh to modify (must be distinct from input mesh)
+ * @param u vertex row
+ * @param v vertex column
+ * @param maxdist maximum depth difference to consider two vertices neighbors
+ * @param fac displacement distance
+ */
 template <typename T>
 void displace(const cv::Mat &inds, const OBJMesh<T> &mesh, OBJMesh<T> &outMesh, int u, int v, T maxdist, T fac) {
     int index = (int) round(inds.at<float>(v, u));
@@ -134,6 +145,15 @@ OBJMesh<T> createMesh(const cv::Mat &depth_img, T max_depth, T occlusion_thresho
     return mesh;
 }
 
+/**
+ * Create a displaced grid mesh approximating the geometry in the input depth map.
+ * @tparam T numerical precision (supports float and double)
+ * @param depth_img
+ * @param max_depth cutoff depth
+ * @param occlusion_threshold maximum depth difference for connected vertices
+ * @param displacement amount of mesh displacement/infilling at occlusion boundaries
+ * @return
+ */
 template <class T>
 OBJMesh<T> createMesh(const cv::Mat &depth_img, T max_depth, T occlusion_threshold, T displacement=0);
 
