@@ -86,7 +86,7 @@ OBJMesh<T> createMesh(const cv::Mat &depth_img, T max_depth, T occlusion_thresho
             T px = (u - cx) * depth  * constant_x;
 
             Vector3<T> point(-px, -py, depth);
-            mesh.AddVertex(point);
+            mesh.AddVertex(point, Eigen::Vector2f(u/((float)depth_img.cols-1),1 - (v/((float) depth_img.rows-1))));
 
             inds.at<T>(v, u) = index;
             index++;
