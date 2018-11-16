@@ -7,9 +7,10 @@
 #include "OBJWriter.hpp"
 #include <sstream>
 #include "OptionParser.hpp"
+#include "MeshBuilder.hpp"
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>]" << std::endl;
 }
 
 std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 4, 4> const &fromWorld, float alpha, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d()) {
@@ -73,47 +74,12 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 
     return scene;
 }
 
-template <typename T>
-void displace(cv::Mat &inds, const OBJMesh<T> &mesh, OBJMesh<T> &outMesh, int u, int v, T maxdist, T fac) {
-    int index = (int) round(inds.at<float>(v, u));
-    if (index < 1) return;
-    const Vector3<T> vert = mesh.GetVertex(index);
-    Vector3<T> &outVert = outMesh.GetVertex(index);
-    std::vector<int> neighbors;
-    neighbors.push_back((int) round(inds.at<float>(v, u+1)));
-    neighbors.push_back((int) round(inds.at<float>(v+1, u)));
-    neighbors.push_back((int) round(inds.at<float>(v-1, u)));
-    neighbors.push_back((int) round(inds.at<float>(v, u-1)));
-    //diagonal neighbors
-    /*neighbors.push_back((int) round(inds.at<float>(v+1, u+1)));
-    neighbors.push_back((int) round(inds.at<float>(v-1, u+1)));
-    neighbors.push_back((int) round(inds.at<float>(v+1, u-1)));
-    neighbors.push_back((int) round(inds.at<float>(v-1, u-1)));*/
-    bool skip = true;
-    for (const int i : neighbors) {
-        if (i < 1) skip = false;
-        if (std::fabs(mesh.GetVertex(i)[2] - vert[2]) > maxdist) skip = false;
-    }
-    if (skip) return;
-
-    for (const int i : neighbors) {
-        if (i < 1) continue;
-        const Vector3<T> &neighbor = mesh.GetVertex(i);
-        if (std::fabs(neighbor[2] - vert[2]) < maxdist) {
-            Vector3<T> disp = vert - neighbor;
-            disp.normalize();
-            outVert = outVert + disp * fac;
-        }
-    }
-
-}
-
 int main(int argc, char** argv) {
     std::string filename = "/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/maxdepth100/Depth00002_Theta228_Phi52_ALL.exr";
     std::string envmap = "/bugger.exr";
     const std::string mesh_path = "output_mesh.obj";
     const std::string scene_path = "scene_gen.xml";
-    const float scale_factor = 0.5;
+    float scale_factor = 0.5;
     float phi = 0;
     float theta = 0;
     float alpha = 0;
@@ -165,128 +131,41 @@ int main(int argc, char** argv) {
         std::cout << "using scene version " << scene_version << std::endl;
     }
 
+    if (parser.cmdOptionExists("r")) {
+        scale_factor = std::stof(parser.getCmdOption("r"));
+        std::cout << "scale factor: " << scale_factor << std::endl;
+    }
+
     cv::Mat depth_img = cv::imread(filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
     if (!depth_img.data) {
       std::cout << "image not found: " << filename << std::endl;
       return 1;
     }
-    depth_img = max_depth * (1-depth_img);
+    //depth_img = max_depth * (1-depth_img); //if transformation is needed
     cv::resize(depth_img, depth_img, cv::Size(0, 0), scale_factor, scale_factor);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
-    const float fov = 45.0f / 180 * ((float) M_PI);
-
-    const float cx = depth_img.cols / 2.0f;
-    const float cy = depth_img.rows / 2.0f;
-
-    const float radius = 26;
-    const float camZ = radius * sin(theta) * cos(phi);
-    const float camX = radius * cos(theta) * cos(phi);
-    const float camY = radius * sin(phi);
+    OBJMesh<float> mesh = createMesh(depth_img, max_depth, occlusion_threshold);
 
     const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
     const float lightX = light_radius * cos(light_theta) * cos(light_phi);
     const float lightY = light_radius * sin(light_phi);
 
-    const Eigen::Matrix<float, 3, 1> center(0, 1, 0);
-    const Eigen::Matrix<float, 3, 1> up(0, 1, 0);
-    const Eigen::Matrix<float, 3, 1> eye(camX, camY, camZ);
-
-    Eigen::Matrix<float, 4, 4> lookat = geom::lookAt(eye, center, up).inverse();
-
-    float constant_x = 2 * ((float)tan(fov/2.0)) / depth_img.cols;
-    float constant_y = constant_x; //assume uniform pinhole model
-
-    float greatest_z = std::numeric_limits<float>::min();
-    float smallest_z = std::numeric_limits<float>::max();
-    float greatest_y = std::numeric_limits<float>::min();
-    float smallest_y = std::numeric_limits<float>::max();
-    int index = 1;
-    cv::Mat inds(depth_img.rows, depth_img.cols, CV_32FC1);
-    int discarded = 0;
-    
     std::ofstream of(mesh_path);
-    OBJMesh<float> mesh;
-
-    for (int v=0; v<depth_img.rows; v++) {
-        for (int u=0; u<depth_img.cols;u++) {
-            float depth = depth_img.at<float>(v, u);
-            if (depth >= max_depth) {
-                discarded++;
-                inds.at<float>(v, u) = -1;
-                continue;
-            }
-            float py = (v - cy) * depth  * constant_y;
-
-            greatest_z = std::max(greatest_z, depth);
-            smallest_z = std::min(smallest_z, depth);
-            greatest_y = std::max(greatest_y, py);
-            smallest_y = std::min(smallest_y, py);
-            float px = (u - cx) * depth  * constant_x;
-
-            Eigen::Vector3f point(-px, -py, depth);
-            mesh.AddVertex(point);
-
-            inds.at<float>(v, u) = index;
-            index++;
-        }
-    }
-
-    std::cout << "maximum depth: " << greatest_z << "; smallest depth: " << smallest_z << std::endl;
-    std::cout << "maximum y: " << greatest_y << "; smallest y: " << smallest_y << std::endl;
-
-    std::cout << "processing " << depth_img.cols*depth_img.rows - discarded << " points (discarded " << discarded << ")" << std::endl;
-
-    if (displacement > 0) {
-        std::cout << "dilating mesh boundaries" << std::endl;
-        OBJMesh<float> mesh_displaced(mesh);
-        for (int v = 1; v < depth_img.rows - 1; v++) {
-            for (int u = 1; u < depth_img.cols - 1; u++) {
-                displace(inds, mesh, mesh_displaced, u, v, occlusion_threshold, displacement);
-            }
-        }
-        mesh = mesh_displaced;
-    }
-
-    std::cout << "populating indices" << std::endl;
-    for (int v=0; v<depth_img.rows-1; v++) {
-        for (int u=0; u<depth_img.cols-1;u++) {
-            int i00 = (int) round(inds.at<float>(v, u));
-            int i01 = (int) round(inds.at<float>(v, u+1));
-            int i10 = (int) round(inds.at<float>(v+1, u));
-            int i11 = (int) round(inds.at<float>(v+1, u+1));
-            if (i00 <= 0 || i01 <= 0 || i10 <= 0 || i11 <= 0) continue;
-            //compute bounds
-
-            float depth00 = depth_img.at<float>(v, u);
-            float depth01 = depth_img.at<float>(v, u+1);
-            float depth10 = depth_img.at<float>(v+1, u);
-            float depth11 = depth_img.at<float>(v+1, u+1);
-
-            float mindepth = depth00;
-            float maxdepth = depth00;
-
-            mindepth = std::min(mindepth, depth01);
-            mindepth = std::min(mindepth, depth10);
-            mindepth = std::min(mindepth, depth11);
-            maxdepth = std::max(maxdepth, depth01);
-            maxdepth = std::max(maxdepth, depth10);
-            maxdepth = std::max(maxdepth, depth11);
-            if (maxdepth - mindepth > occlusion_threshold) {
-                continue;
-            }
-            mesh.AddTri(Eigen::Vector3i(i00, i11, i01));
-            mesh.AddTri(Eigen::Vector3i(i00, i10, i11));
-
-        }
-    }
 
     mesh.SaveOBJ(of);
-    //mesh.SaveOBJ(of);
-
-    std::cout << "finished creating mesh " << mesh_path << std::endl;
     of.close();
+    std::cout << "finished creating mesh " << mesh_path << std::endl;
 
+    std::cout << "generating scene" << std::endl;
+    const float radius = 26;
+    const Eigen::Matrix<float, 3, 1> center(0, 1, 0);
+    const Eigen::Matrix<float, 3, 1> up(0, 1, 0);
+    const float camZ = radius * sin(theta) * cos(phi);
+    const float camX = radius * cos(theta) * cos(phi);
+    const float camY = radius * sin(phi);
+    const Eigen::Matrix<float, 3, 1> eye(camX, camY, camZ);
+    Eigen::Matrix<float, 4, 4> lookat = geom::lookAt(eye, center, up).inverse();
     auto scene = buildScene(envmap, lookat, alpha, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
     std::ofstream sceneof(scene_path);
     scene->SaveXML(sceneof);
