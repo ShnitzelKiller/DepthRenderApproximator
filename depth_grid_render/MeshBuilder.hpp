@@ -6,7 +6,7 @@
 #include "CameraUtils.hpp"
 
 /**
- * Displace vertex in the plane of its neighbors to fill holes
+ * Displace vertex in the plane of its neighbors to fill holes (very badly)
  * @tparam T
  * @param inds mesh indices in a 2D matrix for convenient neighbor lookup
  * @param mesh reference OBJ Mesh structure
