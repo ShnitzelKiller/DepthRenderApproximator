@@ -13,7 +13,7 @@ void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 4, 4> const &fromWorld, float alpha, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d()) {
+std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 4, 4> const &fromWorld, float alpha, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshTexture="") {
     using namespace std;
 
     ostringstream mat;
@@ -40,6 +40,12 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 
     shape->AddChild(make_shared<XMLElement>("string", "filename", "output_mesh.obj"));
     auto bsdf = make_shared<XMLElement>("bsdf", "roughplastic");
     bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
+    if (!meshTexture.empty()) {
+        auto texture = make_shared<XMLElement>("texture", "bitmap");
+        texture->AddProperty("name", "diffuseReflectance");
+        texture->AddChild(make_shared<XMLElement>("string", "filename", meshTexture));
+        bsdf->AddChild(texture);
+    }
     shape->AddChild(bsdf);
 
     auto emitter = make_shared<XMLElement>("emitter", "envmap");
@@ -80,6 +86,8 @@ int main(int argc, char** argv) {
     const std::string mesh_path = "output_mesh.obj";
     const std::string scene_path = "scene_gen.xml";
     float scale_factor = 0.5;
+    const std::string textured_scene_path = "scene_gen_tex.xml";
+    const std::string texture_image = "texture.png";
     float phi = 0;
     float theta = 0;
     float alpha = 0;
@@ -170,6 +178,10 @@ int main(int argc, char** argv) {
     std::ofstream sceneof(scene_path);
     scene->SaveXML(sceneof);
     sceneof.close();
+    auto texscene = buildScene(envmap, lookat, alpha, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), texture_image);
+    std::ofstream texsceneof(textured_scene_path);
+    texscene->SaveXML(texsceneof);
+    texsceneof.close();
 
     std::cout << "wrote scene file to " << scene_path << std::endl;
     return 0;
