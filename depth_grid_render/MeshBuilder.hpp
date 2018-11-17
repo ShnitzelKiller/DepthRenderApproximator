@@ -77,16 +77,23 @@ OBJMesh<T> createMesh(const cv::Mat &depth_img, T max_depth, T occlusion_thresho
                 inds.at<T>(v, u) = -1;
                 continue;
             }
-            T py = (v - cy) * depth  * constant_y;
+
+            T px = (u - cx) * constant_x;
+            T py = (v - cy) * constant_y;
+
+            depth /= sqrt(1+px*px+py*py);
+
+            px *= depth;
+            py *= depth;
 
             greatest_z = std::max(greatest_z, depth);
             smallest_z = std::min(smallest_z, depth);
             greatest_y = std::max(greatest_y, py);
             smallest_y = std::min(smallest_y, py);
-            T px = (u - cx) * depth  * constant_x;
+
 
             Vector3<T> point(-px, -py, depth);
-            mesh.AddVertex(point, Eigen::Vector2f(u/((float)depth_img.cols-1),1 - (v/((float) depth_img.rows-1))));
+            mesh.AddVertex(point, Vector2<T>(u/(static_cast<T>(depth_img.cols-1)),1 - (v/(static_cast<T>(depth_img.rows-1)))));
 
             inds.at<T>(v, u) = index;
             index++;
