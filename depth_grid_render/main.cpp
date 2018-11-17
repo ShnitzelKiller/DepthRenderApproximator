@@ -13,15 +13,8 @@ void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 4, 4> const &fromWorld, float alpha, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshTexture="") {
+std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshTexture="") {
     using namespace std;
-
-    ostringstream mat;
-    mat << fromWorld(0, 0) << " " << fromWorld(0, 1) << " " << fromWorld(0, 2) << " " << fromWorld(0, 3) << " "
-        << fromWorld(1, 0) << " " << fromWorld(1, 1) << " " << fromWorld(1, 2) << " " << fromWorld(1, 3) << " "
-        << fromWorld(2, 0) << " " << fromWorld(2, 1) << " " << fromWorld(2, 2) << " " << fromWorld(2, 3) << " "
-        << fromWorld(3, 0) << " " << fromWorld(3, 1) << " " << fromWorld(3, 2) << " " << fromWorld(3, 3);
-
     auto scene = make_shared<XMLElement>("scene");
     scene->AddProperty("version", std::move(scene_version));
 
@@ -51,12 +44,7 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 
     auto emitter = make_shared<XMLElement>("emitter", "envmap");
     emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
 
-    auto transform = make_shared<XMLElement>("transform");
-    transform->AddProperty("name", "toWorld");
-    auto matrix = make_shared<XMLElement>("matrix");
-    matrix->AddProperty("value", mat.str());
-    transform->AddChild(matrix);
-    emitter->AddChild(transform);
+    //    emitter->AddChild(transform);
 
     scene->AddChild(camera);
     scene->AddChild(shape);
@@ -71,7 +59,6 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, Eigen::Matrix<float, 
         translate->AddProperty("y", std::to_string(light_pos[1]));
         translate->AddProperty("z", std::to_string(light_pos[2]));
         light_trans->AddChild(translate);
-	light_trans->AddChild(matrix); //also transform into camera space
         light->AddChild(light_trans);
 	light->AddChild(make_shared<XMLElement>("spectrum", "intensity", "100"));
         scene->AddChild(light);
@@ -155,15 +142,7 @@ int main(int argc, char** argv) {
 
     OBJMesh<float> mesh = createMesh(depth_img, max_depth, occlusion_threshold);
 
-    const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
-    const float lightX = light_radius * cos(light_theta) * cos(light_phi);
-    const float lightY = light_radius * sin(light_phi);
-
-    std::ofstream of(mesh_path);
-
-    mesh.SaveOBJ(of);
-    of.close();
-    std::cout << "finished creating mesh " << mesh_path << std::endl;
+    std::cout << "finished creating mesh " << std::endl;
 
     std::cout << "generating scene" << std::endl;
     const float radius = 26;
@@ -173,12 +152,34 @@ int main(int argc, char** argv) {
     const float camX = radius * cos(theta) * cos(phi);
     const float camY = radius * sin(phi);
     const Eigen::Matrix<float, 3, 1> eye(camX, camY, camZ);
-    Eigen::Matrix<float, 4, 4> lookat = geom::lookAt(eye, center, up).inverse();
-    auto scene = buildScene(envmap, lookat, alpha, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
+    Eigen::Matrix<float, 4, 4> camToWorld = geom::lookAt(eye, center, up);
+
+    std::cout << "transforming mesh" << std::endl;
+
+    const size_t n = mesh.GetNumVertices();
+    for (int i=0; i<n; i++) {
+      Vector3<float> &vert = mesh.GetVertex(i);
+      Eigen::Vector4f vert4;
+      vert4.head(3) = vert;
+      vert4[3] = 1;
+      vert4 = camToWorld * vert4;
+      vert = vert4.head(3);
+    }
+
+    std::ofstream of(mesh_path);
+    mesh.SaveOBJ(of);
+    of.close();    
+    
+    std::cout << "saved mesh at " << mesh_path << std::endl;
+
+    const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
+    const float lightX = light_radius * cos(light_theta) * cos(light_phi);
+    const float lightY = light_radius * sin(light_phi);
+    auto scene = buildScene(envmap, alpha, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
     std::ofstream sceneof(scene_path);
     scene->SaveXML(sceneof);
     sceneof.close();
-    auto texscene = buildScene(envmap, lookat, alpha, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), texture_image);
+    auto texscene = buildScene(envmap, alpha, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), texture_image);
     std::ofstream texsceneof(textured_scene_path);
     texscene->SaveXML(texsceneof);
     texsceneof.close();

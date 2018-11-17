@@ -21,6 +21,10 @@ public:
         uvs.push_back(uv);
     }
 
+  size_t GetNumVertices() {
+    return verts.size();
+  }
+
     void AddTri(const Eigen::Vector3i &f) {
         tris.push_back(f);
     }
