@@ -45,9 +45,9 @@ namespace geom {
         u = s.cross(f);
 
         Matrix4 res;
-        res << -s.x(), u.x(), f.x(), eye.x(),
-	  -s.y(), u.y(), f.y(), eye.y(),
-	  -s.z(), u.z(), f.z(), eye.z(),
+        res << s.x(), u.x(), -f.x(), eye.x(),
+	  s.y(), u.y(), -f.y(), eye.y(),
+	  s.z(), u.z(), -f.z(), eye.z(),
                 0, 0, 0, 1;
         //std::cout << res.inverse() << std::endl;
 
