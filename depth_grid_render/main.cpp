@@ -83,9 +83,11 @@ int main(int argc, char** argv) {
     const float light_radius = 26;
     float occlusion_threshold = 1;
     const float max_depth = 100;
+    const float min_depth = 1;
     float displacement = 0;
     bool light = false;
     std::string scene_version("0.6.0");
+    const float plane_height = -1.7f;
 
     //parse arguments
 
@@ -140,7 +142,7 @@ int main(int argc, char** argv) {
     cv::resize(depth_img, depth_img, cv::Size(0, 0), scale_factor, scale_factor);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
-    OBJMesh<float> mesh = createMesh(depth_img, max_depth, occlusion_threshold);
+    OBJMesh<float> mesh = createMesh(depth_img, min_depth, max_depth, occlusion_threshold);
 
     std::cout << "finished creating mesh " << std::endl;
 
@@ -165,6 +167,8 @@ int main(int argc, char** argv) {
       vert4 = camToWorld * vert4;
       vert = vert4.head(3);
     }
+
+    mesh.DeleteBelowY(plane_height);
 
     std::ofstream of(mesh_path);
     mesh.SaveOBJ(of);

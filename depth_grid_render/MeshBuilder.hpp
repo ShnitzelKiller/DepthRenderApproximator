@@ -52,7 +52,7 @@ void displace(const cv::Mat &inds, const OBJMesh<T> &mesh, OBJMesh<T> &outMesh, 
 }
 
 template <class T>
-OBJMesh<T> createMesh(const cv::Mat &depth_img, T max_depth, T occlusion_threshold, int format, T displacement=0) {
+OBJMesh<T> createMesh(const cv::Mat &depth_img, T min_depth, T max_depth, T occlusion_threshold, int format, T displacement=0) {
     const T fov = static_cast<T>(45) / 180 * M_PI;
     const T cx = depth_img.cols / 2.0f;
     const T cy = depth_img.rows / 2.0f;
@@ -72,7 +72,7 @@ OBJMesh<T> createMesh(const cv::Mat &depth_img, T max_depth, T occlusion_thresho
     for (int v=0; v<depth_img.rows; v++) {
         for (int u=0; u<depth_img.cols;u++) {
             T depth = depth_img.at<T>(v, u);
-            if (depth >= max_depth) {
+            if (depth >= max_depth || depth <= min_depth) {
                 discarded++;
                 inds.at<T>(v, u) = -1;
                 continue;
@@ -162,18 +162,18 @@ OBJMesh<T> createMesh(const cv::Mat &depth_img, T max_depth, T occlusion_thresho
  * @return
  */
 template <class T>
-OBJMesh<T> createMesh(const cv::Mat &depth_img, T max_depth, T occlusion_threshold, T displacement=0);
+OBJMesh<T> createMesh(const cv::Mat &depth_img, T min_depth, T max_depth, T occlusion_threshold, T displacement=0);
 
 template <>
-OBJMesh<float> createMesh<float>(const cv::Mat &depth_img, float max_depth, float occlusion_threshold, float displacement) {
+OBJMesh<float> createMesh<float>(const cv::Mat &depth_img, float min_depth, float max_depth, float occlusion_threshold, float displacement) {
     std::cout << "using single precision" << std::endl;
-    return createMesh<float>(depth_img, max_depth, occlusion_threshold, CV_32FC1, displacement);
+    return createMesh<float>(depth_img, min_depth, max_depth, occlusion_threshold, CV_32FC1, displacement);
 }
 
 template <>
-OBJMesh<double> createMesh<double>(const cv::Mat &depth_img, double max_depth, double occlusion_threshold, double displacement) {
+OBJMesh<double> createMesh<double>(const cv::Mat &depth_img, double min_depth, double max_depth, double occlusion_threshold, double displacement) {
     std::cout << "using double precision" << std::endl;
-    return createMesh<double>(depth_img, max_depth, occlusion_threshold, CV_64FC1, displacement);
+    return createMesh<double>(depth_img, min_depth, max_depth, occlusion_threshold, CV_64FC1, displacement);
 }
 
 #endif

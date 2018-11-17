@@ -11,6 +11,22 @@ using Vector3 = Eigen::Matrix<T, 3, 1>;
 template<typename T>
 using Vector2 = Eigen::Matrix<T, 2, 1>;
 
+template<typename T>
+struct YTest {
+  YTest(T val, std::vector<Vector3<T>> &vertices) : val_(val), vertices_(vertices) {}
+  bool operator()(Eigen::Vector3i element) {
+    for (int i=0; i<3; i++) {
+      if (vertices_[element[i]-1][2] < val_) {
+	return true;
+      }
+    }
+    return false;
+  }
+private:
+  T val_;
+  std::vector<Vector3<T>> &vertices_;
+};
+
 template <typename T>
 class OBJMesh {
 public:
@@ -21,8 +37,12 @@ public:
         uvs.push_back(uv);
     }
 
-  size_t GetNumVertices() {
+  size_t GetNumVertices() const {
     return verts.size();
+  }
+
+  size_t GetNumElements() const {
+    return tris.size();
   }
 
     void AddTri(const Eigen::Vector3i &f) {
@@ -57,6 +77,18 @@ public:
     const Vector3<T>& GetVertex(int index) const {
         return verts[index - 1];
     }
+
+  Eigen::Vector3i& GetElement(int index) {
+    return tris[index-1];
+  }
+  const Eigen::Vector3i& GetElement(int index) const {
+    return tris[index-1];
+  }
+
+  void DeleteBelowY(T threshold) {
+    YTest cond(threshold, verts);
+    tris.erase(std::remove_if(tris.begin(), tris.end(), cond));
+  }
 
 private:
     std::vector<Vector3<T>> verts;
