@@ -101,8 +101,8 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
 }
 
 int main(int argc, char** argv) {
-    std::string filename = "/Users/jamesnoeckel/Documents/C++sandbox/points_from_depth/data/maxdepth100/Depth00002_Theta228_Phi52_ALL.exr";
-    std::string envmap = "/bugger.exr";
+    std::string filename;
+    std::string envmap;
     const std::string mesh_path = "output_mesh.obj";
     const std::string scene_path = "scene_gen.xml";
     float scale_factor = 0.5;
