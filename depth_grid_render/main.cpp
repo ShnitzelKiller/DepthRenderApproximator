@@ -13,8 +13,14 @@ void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshTexture="") {
+std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, Eigen::Matrix<float, 4, 4> &toWorld, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshTexture="") {
     using namespace std;
+    ostringstream mat;
+    mat << toWorld(0, 0) << " " << toWorld(0, 1) << " " << toWorld(0, 2) << " " << toWorld(0, 3) << " "
+        << toWorld(1, 0) << " " << toWorld(1, 1) << " " << toWorld(1, 2) << " " << toWorld(1, 3) << " "
+        << toWorld(2, 0) << " " << toWorld(2, 1) << " " << toWorld(2, 2) << " " << toWorld(2, 3) << " "
+        << toWorld(3, 0) << " " << toWorld(3, 1) << " " << toWorld(3, 2) << " " << toWorld(3, 3);
+
     auto scene = make_shared<XMLElement>("scene");
     scene->AddProperty("version", std::move(scene_version));
 
@@ -28,6 +34,12 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, std::str
     film->AddChild(make_shared<XMLElement>("integer", "height", "540"));
     film->AddChild(make_shared<XMLElement>("boolean", "banner", "false"));
     camera->AddChild(film);
+    auto cam_trans = make_shared<XMLElement>("transform");
+    cam_trans->AddProperty("name", "toWorld");
+    auto matrix = make_shared<XMLElement>("matrix");
+    matrix->AddProperty("value", mat.str());
+    cam_trans->AddChild(matrix);
+    camera->AddChild(cam_trans);
 
     auto shape = make_shared<XMLElement>("shape", "obj");
     shape->AddChild(make_shared<XMLElement>("string", "filename", "output_mesh.obj"));
@@ -179,11 +191,11 @@ int main(int argc, char** argv) {
     const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
     const float lightX = light_radius * cos(light_theta) * cos(light_phi);
     const float lightY = light_radius * sin(light_phi);
-    auto scene = buildScene(envmap, alpha, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
+    auto scene = buildScene(envmap, alpha, camToWorld, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
     std::ofstream sceneof(scene_path);
     scene->SaveXML(sceneof);
     sceneof.close();
-    auto texscene = buildScene(envmap, alpha, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), texture_image);
+    auto texscene = buildScene(envmap, alpha, camToWorld, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), texture_image);
     std::ofstream texsceneof(textured_scene_path);
     texscene->SaveXML(texsceneof);
     texsceneof.close();
