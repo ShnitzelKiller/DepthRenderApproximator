@@ -15,7 +15,7 @@ void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshTexture="") {
+std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, const Eigen::Vector3f &planeOrigin, const Eigen::Vector2f &planeScale, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshTexture="") {
     using namespace std;
     ostringstream eye;
     eye << camOrigin[0] << ", " << camOrigin[1] << ", " << camOrigin[2];
@@ -54,6 +54,27 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
     }
     shape->AddChild(bsdf);
 
+    auto plane = make_shared<XMLElement>("shape", "rectangle");
+    auto plane_trans = make_shared<XMLElement>("transform");
+    plane_trans->AddProperty("name", "toWorld");
+    auto plane_scale = make_shared<XMLElement>("scale");
+    plane_scale->AddProperty("x", std::to_string(planeScale[0]));
+    plane_scale->AddProperty("y", std::to_string(planeScale[1]));
+    auto plane_rotate = make_shared<XMLElement>("rotate");
+    plane_rotate->AddProperty("x", "1");
+    plane_rotate->AddProperty("angle", "-90");
+    auto plane_translate = make_shared<XMLElement>("translate");
+    plane_translate->AddProperty("x", std::to_string(planeOrigin[0]));
+    plane_translate->AddProperty("y", std::to_string(planeOrigin[1]));
+    plane_translate->AddProperty("z", std::to_string(planeOrigin[2]));
+    plane_trans->AddChild(plane_scale);
+    plane_trans->AddChild(plane_rotate);
+    plane_trans->AddChild(plane_translate);
+    plane->AddChild(plane_trans);
+    auto plane_bsdf = make_shared<XMLElement>("bsdf", "roughplastic");
+    bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
+    plane->AddChild(bsdf);
+
     auto emitter = make_shared<XMLElement>("emitter", "envmap");
     emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
 
@@ -62,6 +83,7 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
     scene->AddChild(camera);
     scene->AddChild(shape);
     scene->AddChild(emitter);
+    scene->AddChild(plane);
 
     if (pointlight) {
         auto light = make_shared<XMLElement>("emitter", "point");
@@ -172,6 +194,8 @@ int main(int argc, char** argv) {
     std::cout << "transforming mesh" << std::endl;
 
     std::vector<float> heights;
+    std::vector<float> xs;
+    std::vector<float> zs;
     const size_t n = mesh.GetNumVertices();
     for (int i=1; i<=n; i++) {
       Vector3<float> &vert = mesh.GetVertex(i);
@@ -181,14 +205,31 @@ int main(int argc, char** argv) {
       vert4 = camToWorld * vert4;
       vert = vert4.head(3);
       heights.push_back(vert[1]);
+      xs.push_back(vert[0]);
+      zs.push_back(vert[2]);
     }
     std::sort(heights.begin(), heights.end());
-    float minHeight = heights[heights.size() / 32];
+    std::sort(xs.begin(), xs.end());
+    std::sort(zs.begin(), zs.end());
+    const size_t smallIndex = depth_img.cols / 2;
+    const size_t largeIndex = n - 1 - smallIndex;
+    const float minHeight = heights[smallIndex];
     std::cout << "deleting below " << minHeight << std::endl;
-    size_t oldSize = mesh.GetNumElements();
+    const size_t oldSize = mesh.GetNumElements();
     mesh.DeleteBelowY(minHeight + floorEps);
-    size_t newSize = mesh.GetNumElements();
+    const size_t newSize = mesh.GetNumElements();
     std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
+
+    const float minX = xs[smallIndex];
+    const float maxX = xs[largeIndex];
+    const float minZ = zs[smallIndex];
+    const float maxZ = zs[largeIndex];
+    const float scaleX = (maxX - minX) / 2;
+    const float scaleZ = (maxZ - minZ) / 2;
+    const float originX = (maxX + minX) / 2;
+    const float originZ = (maxZ + minZ) / 2;
+    const Eigen::Vector2f planeScale(scaleX, scaleZ);
+    const Eigen::Vector3f planeOrigin(originX, minHeight, originZ);
 
     std::ofstream of(mesh_path);
     mesh.SaveOBJ(of);
@@ -199,11 +240,11 @@ int main(int argc, char** argv) {
     const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
     const float lightX = light_radius * cos(light_theta) * cos(light_phi);
     const float lightY = light_radius * sin(light_phi);
-    auto scene = buildScene(envmap, alpha, eye, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
+    auto scene = buildScene(envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
     std::ofstream sceneof(scene_path);
     scene->SaveXML(sceneof);
     sceneof.close();
-    auto texscene = buildScene(envmap, alpha, eye, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), texture_image);
+    auto texscene = buildScene(envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), texture_image);
     std::ofstream texsceneof(textured_scene_path);
     texscene->SaveXML(texsceneof);
     texsceneof.close();
