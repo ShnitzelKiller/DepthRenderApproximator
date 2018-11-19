@@ -11,6 +11,8 @@ depth_grid_render/output
 .#*
 *~
 *.obj
+*.mtl
 *.xml
 data/
 depth_grid_render/build/
+quotient_image/build/
