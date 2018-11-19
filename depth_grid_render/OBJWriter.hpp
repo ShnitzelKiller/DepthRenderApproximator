@@ -5,7 +5,6 @@
 #include <string>
 #include <fstream>
 #include <Eigen/Dense>
-#include <iostream>
 template<typename T>
 using Vector3 = Eigen::Matrix<T, 3, 1>;
 template<typename T>
@@ -16,7 +15,7 @@ struct YTest {
   YTest(T val, std::vector<Vector3<T>> &vertices) : val_(val), vertices_(vertices) {}
   bool operator()(Eigen::Vector3i element) {
     for (int i=0; i<3; i++) {
-      if (vertices_[element[i]-1][2] < val_) {
+      if (vertices_[element[i]-1][1] < val_) {
 	return true;
       }
     }
@@ -88,8 +87,7 @@ public:
   void DeleteBelowY(T threshold) {
     YTest<T> cond(threshold, verts);
     auto search = std::remove_if(tris.begin(), tris.end(), cond);
-    std::cout << "removed " << std::distance(search, tris.end()) << " faces out of " << tris.size() << std::endl;
-    tris.erase(search);
+    tris.erase(search, tris.end());
   }
 
 private:

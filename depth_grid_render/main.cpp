@@ -8,6 +8,8 @@
 #include <sstream>
 #include "OptionParser.hpp"
 #include "MeshBuilder.hpp"
+#include <math.h>
+#include <limits>
 
 void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>]" << std::endl;
@@ -84,6 +86,7 @@ int main(int argc, char** argv) {
     const std::string mesh_path = "output_mesh.obj";
     const std::string scene_path = "scene_gen.xml";
     float scale_factor = 0.5;
+    const float floorEps = 5e-2;
     const std::string textured_scene_path = "scene_gen_tex.xml";
     const std::string texture_image = "texture.exr";
     float phi = 0;
@@ -98,7 +101,6 @@ int main(int argc, char** argv) {
     float displacement = 0;
     bool light = false;
     std::string scene_version("0.6.0");
-    const float plane_height = 0.0f;
 
     //parse arguments
 
@@ -169,6 +171,7 @@ int main(int argc, char** argv) {
 
     std::cout << "transforming mesh" << std::endl;
 
+    std::vector<float> heights;
     const size_t n = mesh.GetNumVertices();
     for (int i=1; i<=n; i++) {
       Vector3<float> &vert = mesh.GetVertex(i);
@@ -177,9 +180,15 @@ int main(int argc, char** argv) {
       vert4[3] = 1;
       vert4 = camToWorld * vert4;
       vert = vert4.head(3);
+      heights.push_back(vert[1]);
     }
-
-    mesh.DeleteBelowY(plane_height);
+    std::sort(heights.begin(), heights.end());
+    float minHeight = heights[heights.size() / 32];
+    std::cout << "deleting below " << minHeight << std::endl;
+    size_t oldSize = mesh.GetNumElements();
+    mesh.DeleteBelowY(minHeight + floorEps);
+    size_t newSize = mesh.GetNumElements();
+    std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
 
     std::ofstream of(mesh_path);
     mesh.SaveOBJ(of);
@@ -199,6 +208,6 @@ int main(int argc, char** argv) {
     texscene->SaveXML(texsceneof);
     texsceneof.close();
 
-    std::cout << "wrote scene file to " << scene_path << std::endl;
+    std::cout << "wrote scene files to " << std::endl << scene_path << std::endl << textured_scene_path << std::endl;
     return 0;
 }
