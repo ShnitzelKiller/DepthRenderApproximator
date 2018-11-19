@@ -44,8 +44,8 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
 
     auto shape = make_shared<XMLElement>("shape", "obj");
     shape->AddChild(make_shared<XMLElement>("string", "filename", "output_mesh.obj"));
-    auto bsdf = make_shared<XMLElement>("bsdf", "roughplastic");
-    bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
+    auto bsdf = make_shared<XMLElement>("bsdf", "diffuse");
+    bsdf->AddChild(make_shared<XMLElement>("spectrum", "reflectance", "1"));
     if (!meshTexture.empty()) {
         auto texture = make_shared<XMLElement>("texture", "bitmap");
         texture->AddProperty("name", "diffuseReflectance");
@@ -72,8 +72,8 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
     plane_trans->AddChild(plane_translate);
     plane->AddChild(plane_trans);
     auto plane_bsdf = make_shared<XMLElement>("bsdf", "roughplastic");
-    bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
-    plane->AddChild(bsdf);
+    plane_bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
+    plane->AddChild(plane_bsdf);
 
     auto emitter = make_shared<XMLElement>("emitter", "envmap");
     emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
