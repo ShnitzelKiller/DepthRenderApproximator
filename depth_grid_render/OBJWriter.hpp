@@ -70,7 +70,7 @@ public:
         }
         std::ofstream mf("material.mtl");
         mf << "newmtl textured" << std::endl;
-        mf << "map_Kd texture.png" << std::endl;
+        mf << "map_Kd texture.exr" << std::endl;
     }
 
     Vector3<T>& GetVertex(int index) {
