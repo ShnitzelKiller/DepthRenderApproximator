@@ -6,3 +6,11 @@
 *.exr
 *~
 depth_grid_render/output
+#*
+*#
+.#*
+*~
+*.obj
+*.xml
+data/
+depth_grid_render/build/
