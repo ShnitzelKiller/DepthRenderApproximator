@@ -3,8 +3,9 @@
 source /projects/grail/jamesn8/Dependencies/mitsuba-master/setpath.sh
 
 render_cmd=/projects/grail/jamesn8/projects/DepthRenderApproximator/depth_grid_render/build/depth_grid_render
+quotient_cmd=/projects/grail/jamesn8/projects/DepthRenderApproximator/quotient_image/build/quotient_image
 
-datadir=/projects/grail/switzw/GeneratedDatasetPointLight
+datadir=/local1/edzhang/dataset
 hdrdir=/projects/grail/jamesn8/projects/DepthRenderApproximator/data/hdrmaps
 outdir=/projects/grail/jamesn8/projects/DepthRenderApproximator/depth_grid_render/output/full
 
@@ -19,6 +20,7 @@ cd $datadir
 allfiles=$(ls)
 keyfiles=$(printf "$allfiles" | grep _Y.exr$)
 depthfiles=$(printf "$allfiles" | grep Depth)
+tmpfile=tmp.exr
 
 echo total files: $(printf "${allfiles}\n" | wc -l)
 echo total depth maps: $(printf "${depthfiles}\n" | wc -l)
@@ -90,6 +92,11 @@ for filename in ${datadir}/*_Y.exr; do
     echo alpha: $alpha
 
     $render_cmd $datadir/$depth_map $hdrdir/$env_map $theta $phi $alpha -ltheta $light_theta -lphi $light_phi
-    mitsuba scene_gen.xml -o $outfile
+    echo "Render lighting image"
+    mitsuba scene_gen.xml -o $tmpfile
+    echo "Compute diffuse reflectance"
+    $quotient_cmd $datadir/$filename $tmpfile texture.exr
+    echo "Render full image"
+    mitsuba scene_gen_tex.xml -o $outfile
     exit #remove when this actually works
 done
