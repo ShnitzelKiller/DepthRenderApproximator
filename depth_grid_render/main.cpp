@@ -78,8 +78,6 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
     auto emitter = make_shared<XMLElement>("emitter", "envmap");
     emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
 
-    //    emitter->AddChild(transform);
-
     scene->AddChild(camera);
     scene->AddChild(shape);
     scene->AddChild(emitter);
@@ -108,7 +106,7 @@ int main(int argc, char** argv) {
     const std::string mesh_path = "output_mesh.obj";
     const std::string scene_path = "scene_gen.xml";
     float scale_factor = 0.5;
-    const float floorEps = 5e-2;
+    const float floorEps = 3e-2;
     const std::string textured_scene_path = "scene_gen_tex.xml";
     const std::string texture_image = "texture.exr";
     float phi = 0;
@@ -174,7 +172,7 @@ int main(int argc, char** argv) {
       return 1;
     }
     //depth_img = max_depth * (1-depth_img); //if transformation is needed
-    cv::resize(depth_img, depth_img, cv::Size(0, 0), scale_factor, scale_factor);
+    cv::resize(depth_img, depth_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
     OBJMesh<float> mesh = createMesh(depth_img, min_depth, max_depth, occlusion_threshold);
@@ -191,11 +189,11 @@ int main(int argc, char** argv) {
     const Eigen::Matrix<float, 3, 1> eye(camX, camY, camZ);
     Eigen::Matrix<float, 4, 4> camToWorld = geom::lookAt(eye, center, up);
 
+    std::cout << "camera position: " << std::endl << eye << std::endl;
     std::cout << "transforming mesh" << std::endl;
 
     std::vector<float> heights;
-    std::vector<float> xs;
-    std::vector<float> zs;
+    std::vector<Eigen::Vector3f> planePoints;
     const size_t n = mesh.GetNumVertices();
     for (int i=1; i<=n; i++) {
       Vector3<float> &vert = mesh.GetVertex(i);
@@ -204,14 +202,12 @@ int main(int argc, char** argv) {
       vert4[3] = 1;
       vert4 = camToWorld * vert4;
       vert = vert4.head(3);
+      planePoints.push_back(vert);
       heights.push_back(vert[1]);
-      xs.push_back(vert[0]);
-      zs.push_back(vert[2]);
     }
+
     std::sort(heights.begin(), heights.end());
-    std::sort(xs.begin(), xs.end());
-    std::sort(zs.begin(), zs.end());
-    const size_t smallIndex = depth_img.cols / 2;
+    const size_t smallIndex = std::max(depth_img.rows, depth_img.cols) * 2;
     const size_t largeIndex = n - 1 - smallIndex;
     const float minHeight = heights[smallIndex];
     std::cout << "deleting below " << minHeight << std::endl;
@@ -220,10 +216,22 @@ int main(int argc, char** argv) {
     const size_t newSize = mesh.GetNumElements();
     std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
 
-    const float minX = xs[smallIndex];
-    const float maxX = xs[largeIndex];
-    const float minZ = zs[smallIndex];
-    const float maxZ = zs[largeIndex];
+    std::vector<float> xs, zs;
+    for (const auto &point : planePoints) {
+        if (point[1] < minHeight + 3*floorEps && point[1] > minHeight - 3*floorEps) {
+            xs.push_back(point[0]);
+            zs.push_back(point[2]);
+        }
+    }
+    std::cout << xs.size() << " points in the plane" << std::endl;
+    std::sort(xs.begin(), xs.end());
+    std::sort(zs.begin(), zs.end());
+
+    const float minX = xs[0];
+    const float maxX = xs[xs.size()-1];
+    const float minZ = zs[0];
+    const float maxZ = zs[zs.size()-1];
+    std::cout << "plane dimensions: X [" << minX << ", " << maxX << "], Z [" << minZ << ", " << maxZ << "]" << std::endl;
     const float scaleX = (maxX - minX) / 2;
     const float scaleZ = (maxZ - minZ) / 2;
     const float originX = (maxX + minX) / 2;

@@ -12,17 +12,21 @@ using Vector2 = Eigen::Matrix<T, 2, 1>;
 
 template<typename T>
 struct YTest {
-  YTest(T val, std::vector<Vector3<T>> &vertices) : val_(val), vertices_(vertices) {}
+  YTest(T val, std::vector<Vector3<T>> &vertices, bool strict) : val_(val), vertices_(vertices), strict_(strict) {}
   bool operator()(Eigen::Vector3i element) {
+      bool pred = strict_;
     for (int i=0; i<3; i++) {
-      if (vertices_[element[i]-1][1] < val_) {
-	return true;
+      if (!strict_ && vertices_[element[i]-1][1] < val_) { //if not strict, true if any vertex below threshold
+	    return true;
+      } else if (strict_ && vertices_[element[i]-1][1] >= val_) { //if strict, true only if all vertices are below threshold
+          return false;
       }
     }
-    return false;
+    return pred;
   }
 private:
   T val_;
+  bool strict_;
   std::vector<Vector3<T>> &vertices_;
 };
 
@@ -84,8 +88,8 @@ public:
     return tris[index-1];
   }
 
-  void DeleteBelowY(T threshold) {
-    YTest<T> cond(threshold, verts);
+  void DeleteBelowY(T threshold, bool strict = true) {
+    YTest<T> cond(threshold, verts, strict);
     auto search = std::remove_if(tris.begin(), tris.end(), cond);
     tris.erase(search, tris.end());
   }
