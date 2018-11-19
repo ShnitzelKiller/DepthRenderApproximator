@@ -106,7 +106,8 @@ int main(int argc, char** argv) {
     const std::string mesh_path = "output_mesh.obj";
     const std::string scene_path = "scene_gen.xml";
     float scale_factor = 0.5;
-    const float floorEps = 3e-2;
+    const float floorEps = 5e-2;
+    const float floor_normal_angle_range = 60;
     const std::string textured_scene_path = "scene_gen_tex.xml";
     const std::string texture_image = "texture.exr";
     float phi = 0;
@@ -212,7 +213,7 @@ int main(int argc, char** argv) {
     const float minHeight = heights[smallIndex];
     std::cout << "deleting below " << minHeight << std::endl;
     const size_t oldSize = mesh.GetNumElements();
-    mesh.DeleteBelowY(minHeight + floorEps, true, 30);
+    mesh.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
     const size_t newSize = mesh.GetNumElements();
     std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
 
