@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
     float displacement = 0;
     bool light = false;
     std::string scene_version("0.6.0");
-    const float plane_height = -1.7f;
+    const float plane_height = 0.0f;
 
     //parse arguments
 
