@@ -17,7 +17,7 @@ cd -
 cd $datadir
 
 allfiles=$(ls)
-keyfiles=$(printf "$allfiles" | grep _N.png$)
+keyfiles=$(printf "$allfiles" | grep _Y.exr$)
 depthfiles=$(printf "$allfiles" | grep Depth)
 
 echo total files: $(printf "${allfiles}\n" | wc -l)
@@ -26,9 +26,9 @@ echo total key files: $(printf "${keyfiles}\n" | wc -l)
 
 cd -
 
-for filename in ${datadir}/*_N.png; do
+for filename in ${datadir}/*_Y.exr; do
     filename=${filename##*/}
-    outfile=$outdir/${filename%%_N.png}${suffix}.png
+    outfile=$outdir/${filename%%_Y.exr}${suffix}.exr
     if [ -f $outfile ]
     then
 	echo $outfile already detected, skipping

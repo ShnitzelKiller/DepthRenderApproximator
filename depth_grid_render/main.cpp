@@ -26,7 +26,7 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
     sampler->AddChild(make_shared<XMLElement>("integer", "sampleCount", "128"));
     camera->AddChild(sampler);
     camera->AddChild(make_shared<XMLElement>("float", "fov", "45"));
-    auto film = make_shared<XMLElement>("film", "ldrfilm");
+    auto film = make_shared<XMLElement>("film", "hdrfilm");
     film->AddChild(make_shared<XMLElement>("integer", "width", "960"));
     film->AddChild(make_shared<XMLElement>("integer", "height", "540"));
     film->AddChild(make_shared<XMLElement>("boolean", "banner", "false"));
@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
     const std::string scene_path = "scene_gen.xml";
     float scale_factor = 0.5;
     const std::string textured_scene_path = "scene_gen_tex.xml";
-    const std::string texture_image = "texture.png";
+    const std::string texture_image = "texture.exr";
     float phi = 0;
     float theta = 0;
     float alpha = 0;
