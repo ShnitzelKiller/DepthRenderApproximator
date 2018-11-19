@@ -12,8 +12,11 @@ using Vector2 = Eigen::Matrix<T, 2, 1>;
 
 template<typename T>
 struct YTest {
-  YTest(T val, std::vector<Vector3<T>> &vertices, bool strict) : val_(val), vertices_(vertices), strict_(strict) {}
-  bool operator()(Eigen::Vector3i element) {
+  YTest(T val, std::vector<Vector3<T>> &vertices, bool strict, T ang=90) : val_(val), vertices_(vertices), strict_(strict) {
+    tan2ang_ = tan(ang/360*M_PI);
+    tan2ang_*=tan2ang_;
+  }
+  bool operator()(Eigen::Vector3i &element) {
       bool pred = strict_;
     for (int i=0; i<3; i++) {
       if (!strict_ && vertices_[element[i]-1][1] < val_) { //if not strict, true if any vertex below threshold
@@ -22,11 +25,21 @@ struct YTest {
           return false;
       }
     }
-    return pred;
+    if (pred) {
+      Vector3<T> e1 = vertices_[element[1]-1] - vertices_[element[0]-1];
+      Vector3<T> e2 = vertices_[element[2]-1] - vertices_[element[1]-1];
+      Vector3<T> n = e1.cross(e2);
+      n.normalize();
+      if ((n[0]*n[0]+n[2]*n[2])/(n[1]*n[1]) < tan2ang_) {
+	return true;
+      }
+    }
+    return false;
   }
 private:
   T val_;
   bool strict_;
+  T tan2ang_;
   std::vector<Vector3<T>> &vertices_;
 };
 
@@ -88,8 +101,8 @@ public:
     return tris[index-1];
   }
 
-  void DeleteBelowY(T threshold, bool strict = true) {
-    YTest<T> cond(threshold, verts, strict);
+  void DeleteBelowY(T threshold, bool strict = true, float angle = 90) {
+    YTest<T> cond(threshold, verts, strict, angle);
     auto search = std::remove_if(tris.begin(), tris.end(), cond);
     tris.erase(search, tris.end());
   }

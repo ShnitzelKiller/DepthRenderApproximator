@@ -212,7 +212,7 @@ int main(int argc, char** argv) {
     const float minHeight = heights[smallIndex];
     std::cout << "deleting below " << minHeight << std::endl;
     const size_t oldSize = mesh.GetNumElements();
-    mesh.DeleteBelowY(minHeight + floorEps);
+    mesh.DeleteBelowY(minHeight + floorEps, true, 30);
     const size_t newSize = mesh.GetNumElements();
     std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
 
