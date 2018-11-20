@@ -7,7 +7,7 @@ quotient_cmd=/projects/grail/jamesn8/projects/DepthRenderApproximator/quotient_i
 
 datadir=/local1/edzhang/dataset
 hdrdir=/projects/grail/jamesn8/projects/DepthRenderApproximator/data/hdrmaps
-outdir=/projects/grail/jamesn8/projects/DepthRenderApproximator/depth_grid_render/output/full
+outdir=/projects/grail/jamesn8/projects/DepthRenderApproximator/output/full
 
 suffix=_ALL
 

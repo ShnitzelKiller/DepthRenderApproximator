@@ -5,7 +5,7 @@
 *.log
 *.exr
 *~
-depth_grid_render/output
+output/
 #*
 *#
 .#*
