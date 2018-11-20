@@ -29,6 +29,10 @@ echo total key files: $(printf "${keyfiles}\n" | wc -l)
 cd -
 
 for filename in ${datadir}/*_Y.exr; do
+    rm *.xml
+    rm *.exr
+    rm *.mtl
+    rm *.obj
     filename=${filename##*/}
     outfile=$outdir/${filename%%_Y.exr}${suffix}.exr
     if [ -f $outfile ]
@@ -98,5 +102,5 @@ for filename in ${datadir}/*_Y.exr; do
     $quotient_cmd $datadir/$filename $tmpfile texture.exr
     echo "Render full image"
     mitsuba scene_gen_tex.xml -o $outfile
-    exit #remove when this actually works
+    #exit #remove when this actually works
 done

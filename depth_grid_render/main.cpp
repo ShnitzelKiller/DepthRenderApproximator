@@ -93,7 +93,7 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
         translate->AddProperty("z", std::to_string(light_pos[2]));
         light_trans->AddChild(translate);
         light->AddChild(light_trans);
-	light->AddChild(make_shared<XMLElement>("spectrum", "intensity", "100"));
+	light->AddChild(make_shared<XMLElement>("spectrum", "intensity", "400"));
         scene->AddChild(light);
     }
 
@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
     float alpha = 0;
     float light_theta = 0;
     float light_phi = 0;
-    const float light_radius = 26;
+    const float light_radius = 52;
     float occlusion_threshold = 1;
     const float max_depth = 100;
     const float min_depth = 1;
