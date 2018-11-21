@@ -78,10 +78,14 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
     auto emitter = make_shared<XMLElement>("emitter", "envmap");
     emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
 
+    auto integrator = make_shared<XMLElement>("integrator", "path");
+    integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "3"));
+
     scene->AddChild(camera);
     scene->AddChild(shape);
     scene->AddChild(emitter);
     scene->AddChild(plane);
+    scene->AddChild(integrator);
 
     if (pointlight) {
         auto light = make_shared<XMLElement>("emitter", "point");
