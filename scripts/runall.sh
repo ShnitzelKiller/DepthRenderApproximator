@@ -29,10 +29,12 @@ echo total key files: $(printf "${keyfiles}\n" | wc -l)
 cd -
 
 for filename in ${datadir}/*_Y.exr; do
-    rm *.xml
-    rm *.exr
-    rm *.mtl
-    rm *.obj
+    if [ -f scene_gen.xml ]; then
+	rm *.xml
+	rm *.exr
+	rm *.mtl
+	rm *.obj
+    fi
     filename=${filename##*/}
     outfile=$outdir/${filename%%_Y.exr}${suffix}.exr
     if [ -f $outfile ]
@@ -59,6 +61,11 @@ for filename in ${datadir}/*_Y.exr; do
     env_map_name=${filename#${tag}_????_?????}
     env_map_name=${env_map_name%%_Theta*}
     echo env map name: $env_map_name
+    #TODO: remove this when fixed
+    if [ $env_map_name == hotel_room_1k ] || [ $env_map_name == aft_lounge_1k ]; then
+	echo "skipping pathological environment map $env_map_name"
+	continue
+    fi
     env_map=$(printf "$allenvmaps" | grep $env_map_name)
     num_env_maps=$(printf "${env_map}\n" | wc -l)
     if [ ! $num_env_maps -eq 1 ]; then
