@@ -29,8 +29,8 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
     camera->AddChild(sampler);
     camera->AddChild(make_shared<XMLElement>("float", "fov", "45"));
     auto film = make_shared<XMLElement>("film", "hdrfilm");
-    film->AddChild(make_shared<XMLElement>("integer", "width", "960"));
-    film->AddChild(make_shared<XMLElement>("integer", "height", "540"));
+    film->AddChild(make_shared<XMLElement>("integer", "width", "640"));
+    film->AddChild(make_shared<XMLElement>("integer", "height", "360"));
     film->AddChild(make_shared<XMLElement>("boolean", "banner", "false"));
     camera->AddChild(film);
     auto cam_trans = make_shared<XMLElement>("transform");
