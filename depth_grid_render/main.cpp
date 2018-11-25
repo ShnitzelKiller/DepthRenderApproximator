@@ -15,7 +15,7 @@ void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, const Eigen::Vector3f &planeOrigin, const Eigen::Vector2f &planeScale, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshTexture="") {
+std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, const Eigen::Vector3f &planeOrigin, const Eigen::Vector2f &planeScale, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshTexture="") {
     using namespace std;
     ostringstream eye;
     eye << camOrigin[0] << ", " << camOrigin[1] << ", " << camOrigin[2];
@@ -29,8 +29,8 @@ std::shared_ptr<XMLElement> buildScene(std::string envmap, float alpha, const Ei
     camera->AddChild(sampler);
     camera->AddChild(make_shared<XMLElement>("float", "fov", "45"));
     auto film = make_shared<XMLElement>("film", "hdrfilm");
-    film->AddChild(make_shared<XMLElement>("integer", "width", "960"));
-    film->AddChild(make_shared<XMLElement>("integer", "height", "540"));
+    film->AddChild(make_shared<XMLElement>("integer", "width", std::to_string(width)));
+    film->AddChild(make_shared<XMLElement>("integer", "height", std::to_string(height)));
     film->AddChild(make_shared<XMLElement>("boolean", "banner", "false"));
     camera->AddChild(film);
     auto cam_trans = make_shared<XMLElement>("transform");
@@ -176,6 +176,8 @@ int main(int argc, char** argv) {
       std::cout << "image not found: " << filename << std::endl;
       return 1;
     }
+    const int original_width = depth_img.cols;
+    const int original_height = depth_img.rows;
     //depth_img = max_depth * (1-depth_img); //if transformation is needed
     cv::resize(depth_img, depth_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
@@ -253,11 +255,11 @@ int main(int argc, char** argv) {
     const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
     const float lightX = light_radius * cos(light_theta) * cos(light_phi);
     const float lightY = light_radius * sin(light_phi);
-    auto scene = buildScene(envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
+    auto scene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
     std::ofstream sceneof(scene_path);
     scene->SaveXML(sceneof);
     sceneof.close();
-    auto texscene = buildScene(envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), texture_image);
+    auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), texture_image);
     std::ofstream texsceneof(textured_scene_path);
     texscene->SaveXML(texsceneof);
     texsceneof.close();

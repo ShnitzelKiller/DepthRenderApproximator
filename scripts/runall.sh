@@ -6,7 +6,7 @@ render_cmd=/projects/grail/jamesn8/projects/DepthRenderApproximator/depth_grid_r
 quotient_cmd=/projects/grail/jamesn8/projects/DepthRenderApproximator/quotient_image/build/quotient_image
 
 datadir=/local1/edzhang/dataset
-hdrdir=/projects/grail/jamesn8/projects/DepthRenderApproximator/data/hdrmaps
+hdrdir=/local1/edzhang/HDRMaps
 outdir=/projects/grail/jamesn8/projects/DepthRenderApproximator/output/full
 
 suffix=_ALL
@@ -61,11 +61,6 @@ for filename in ${datadir}/*_Y.exr; do
     env_map_name=${filename#${tag}_????_?????}
     env_map_name=${env_map_name%%_Theta*}
     echo env map name: $env_map_name
-    #TODO: remove this when fixed
-    if [ $env_map_name == hotel_room_1k ] || [ $env_map_name == aft_lounge_1k ]; then
-	echo "skipping pathological environment map $env_map_name"
-	continue
-    fi
     env_map=$(printf "$allenvmaps" | grep $env_map_name)
     num_env_maps=$(printf "${env_map}\n" | wc -l)
     if [ ! $num_env_maps -eq 1 ]; then
