@@ -29,7 +29,11 @@ int main(int argc, char** argv) {
         im2.convertTo(im2, CV_32F);
         im2 /= 255;
     }
+    int w = std::max(im1.cols,im2.cols);
+    int h = std::max(im1.rows,im2.rows);
 
+    cv::resize(im1, im1, cv::Size(w, h));
+    cv::resize(im2, im2, cv::Size(w, h));
     cv::Mat quot = im1/im2;
     quot = cv::min(quot, 1);
     if (!isHdr(argv[3])) {

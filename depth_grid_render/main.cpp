@@ -12,10 +12,10 @@
 #include <limits>
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, const Eigen::Vector3f &planeOrigin, const Eigen::Vector2f &planeScale, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshTexture="") {
+std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, const Eigen::Vector3f &planeOrigin, const Eigen::Vector2f &planeScale, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3d light_pos = Eigen::Vector3d(), std::string meshPath="", std::string meshTexture="") {
     using namespace std;
     ostringstream eye;
     eye << camOrigin[0] << ", " << camOrigin[1] << ", " << camOrigin[2];
@@ -43,7 +43,7 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     camera->AddChild(cam_trans);
 
     auto shape = make_shared<XMLElement>("shape", "obj");
-    shape->AddChild(make_shared<XMLElement>("string", "filename", "output_mesh.obj"));
+    shape->AddChild(make_shared<XMLElement>("string", "filename", meshPath));
     auto bsdf = make_shared<XMLElement>("bsdf", "diffuse");
     bsdf->AddChild(make_shared<XMLElement>("spectrum", "reflectance", "1"));
     if (!meshTexture.empty()) {
@@ -105,14 +105,16 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
 }
 
 int main(int argc, char** argv) {
-    std::string filename;
+    std::string filename, mask_filename;
     std::string envmap;
     const std::string mesh_path = "output_mesh.obj";
+    const std::string meshwo_path = "output_meshwo.obj";
     const std::string scene_path = "scene_gen.xml";
     float scale_factor = 0.5;
     const float floorEps = 5e-2;
     const float floor_normal_angle_range = 60;
     const std::string textured_scene_path = "scene_gen_tex.xml";
+    const std::string textured_scenewo_path = "scenewo_gen_tex.xml";
     const std::string texture_image = "texture.exr";
     float phi = 0;
     float theta = 0;
@@ -131,7 +133,7 @@ int main(int argc, char** argv) {
 
     OptionParser parser(argc, argv);
     std::cout << parser.getNumArguments() << " arguments" << std::endl;
-    if (parser.getNumArguments() != 5) {
+    if (parser.getNumArguments() != 6) {
         usage(argv[0]);
         return 0;
     }
@@ -140,6 +142,7 @@ int main(int argc, char** argv) {
     theta = std::stof(parser.getPositionalArgument(2)) / 180.0f * (float) M_PI;
     phi = std::stof(parser.getPositionalArgument(3)) / 180.0f * (float) M_PI;
     alpha = std::stof(parser.getPositionalArgument(4)) / 10000.0f;
+    mask_filename = parser.getPositionalArgument(5);
 
     if (parser.cmdOptionExists("ltheta") && parser.cmdOptionExists("lphi")) {
         light = true;
@@ -171,6 +174,7 @@ int main(int argc, char** argv) {
         std::cout << "scale factor: " << scale_factor << std::endl;
     }
 
+    // Read Depth image
     cv::Mat depth_img = cv::imread(filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
     if (!depth_img.data) {
       std::cout << "image not found: " << filename << std::endl;
@@ -182,7 +186,21 @@ int main(int argc, char** argv) {
     cv::resize(depth_img, depth_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
+    // Read Mask image
+    cv::Mat mask_img = cv::imread(mask_filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
+    if (!mask_img.data) {
+      std::cout << "image not found: " << mask_filename << std::endl;
+      return 1;
+    }
+    cv::resize(mask_img, mask_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
+    // Subtract out mask
+    cv::Mat mask = cv::max(depth_img == mask_img, 1);
+    mask.convertTo(mask, depth_img.type());
+    cv::Mat depthwo_img = depth_img.mul(mask);
+
+
     OBJMesh<float> mesh = createMesh(depth_img, min_depth, max_depth, occlusion_threshold);
+    OBJMesh<float> meshwo = createMesh(depthwo_img, min_depth, max_depth, occlusion_threshold);
 
     std::cout << "finished creating mesh " << std::endl;
 
@@ -212,6 +230,14 @@ int main(int argc, char** argv) {
       planePoints.push_back(vert);
       heights.push_back(vert[1]);
     }
+    for (int i=1; i<=meshwo.GetNumVertices(); i++) {
+      Vector3<float> &vert = meshwo.GetVertex(i);
+      Eigen::Vector4f vert4;
+      vert4.head(3) = vert;
+      vert4[3] = 1;
+      vert4 = camToWorld * vert4;
+      vert = vert4.head(3);
+    }
 
     std::sort(heights.begin(), heights.end());
     const size_t smallIndex = std::max(depth_img.rows, depth_img.cols) * 2;
@@ -220,6 +246,7 @@ int main(int argc, char** argv) {
     std::cout << "deleting below " << minHeight << std::endl;
     const size_t oldSize = mesh.GetNumElements();
     mesh.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
+    meshwo.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
     const size_t newSize = mesh.GetNumElements();
     std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
 
@@ -248,22 +275,29 @@ int main(int argc, char** argv) {
 
     std::ofstream of(mesh_path);
     mesh.SaveOBJ(of);
-    of.close();    
-    
+    of.close();
     std::cout << "saved mesh at " << mesh_path << std::endl;
+    std::ofstream ofwo(meshwo_path);
+    meshwo.SaveOBJ(ofwo);
+    ofwo.close();
+    std::cout << "saved mesh at " << meshwo_path << std::endl;
 
     const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
     const float lightX = light_radius * cos(light_theta) * cos(light_phi);
     const float lightY = light_radius * sin(light_phi);
-    auto scene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ));
+    auto scene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), mesh_path);
     std::ofstream sceneof(scene_path);
     scene->SaveXML(sceneof);
     sceneof.close();
-    auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), texture_image);
+    auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), mesh_path, texture_image);
     std::ofstream texsceneof(textured_scene_path);
     texscene->SaveXML(texsceneof);
     texsceneof.close();
+    auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), meshwo_path, texture_image);
+    std::ofstream texscenewoof(textured_scenewo_path);
+    woscene->SaveXML(texscenewoof);
+    texscenewoof.close();
 
-    std::cout << "wrote scene files to " << std::endl << scene_path << std::endl << textured_scene_path << std::endl;
+    std::cout << "wrote scene files to " << std::endl << scene_path << std::endl << textured_scene_path << std::endl << textured_scenewo_path << std::endl;
     return 0;
 }

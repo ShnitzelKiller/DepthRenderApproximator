@@ -9,7 +9,10 @@ datadir=/local1/edzhang/dataset
 hdrdir=/local1/edzhang/HDRMaps
 outdir=/projects/grail/jamesn8/projects/DepthRenderApproximator/output/full
 
-suffix=_ALL
+masksuffix=_OBJ
+depthsuffix=_ALL
+outputsuffix=_ALL
+outputwosuffix=_WO
 
 cd $hdrdir
 allenvmaps=$(ls)
@@ -36,19 +39,22 @@ for filename in ${datadir}/*_Y.exr; do
 	rm *.obj
     fi
     filename=${filename##*/}
-    outfile=$outdir/${filename%%_Y.exr}${suffix}.exr
-    if [ -f $outfile ]
+    outfilew=$outdir/${filename%%_Y.exr}${outputsuffix}.exr
+    outfilewo=$outdir/${filename%%_Y.exr}${outputwosuffix}.exr
+    if [ -f $outfilew ]
     then
-	echo $outfile already detected, skipping
+	echo $outfilew already detected, skipping
 	continue
     fi
 
     printf "processing $filename\n\n"
     
-    #retrieve depth map
     tag=$(echo $filename | cut -d'_' -f 1)
     echo tag: $tag
-    depth_map=$(printf "$depthfiles" | grep ^${tag} | grep $suffix)
+    files=$(printf "$depthfiles" | grep ^${tag})
+
+    #retrieve depth map
+    depth_map=$(printf "$files" | grep $depthsuffix)
     num_depth_maps=$(printf "${depth_map}\n" | wc -l)
     if [ ! $num_depth_maps -eq 1 ]; then
 	echo "warning: single depth map not found (found $num_depth_maps):"
@@ -56,6 +62,16 @@ for filename in ${datadir}/*_Y.exr; do
 	continue
     fi
     echo "depth map: $depth_map"
+
+    #retrieve mask
+    mask_map=$(printf "$files" | grep $masksuffix)
+    num_mask_maps=$(printf "${mask_map}\n" | wc -l)
+    if [ ! $num_mask_maps -eq 1 ]; then
+	echo "warning: single mask map not found (found $num_mask_maps):"
+	printf "${mask_map}\n"
+	continue
+    fi
+    echo "mask image: $mask_map"
     
     #retrieve env map
     env_map_name=${filename#${tag}_????_?????}
@@ -97,12 +113,14 @@ for filename in ${datadir}/*_Y.exr; do
     alpha=$(echo $params | cut -d'_' -f 5)
     echo alpha: $alpha
 
-    $render_cmd $datadir/$depth_map $hdrdir/$env_map $theta $phi $alpha -ltheta $light_theta -lphi $light_phi
+    $render_cmd $datadir/$depth_map $hdrdir/$env_map $theta $phi $alpha $datadir/$mask_map -ltheta $light_theta -lphi $light_phi
     echo "Render lighting image"
     mitsuba scene_gen.xml -o $tmpfile
     echo "Compute diffuse reflectance"
     $quotient_cmd $datadir/$filename $tmpfile texture.exr
     echo "Render full image"
-    mitsuba scene_gen_tex.xml -o $outfile
+    mitsuba scene_gen_tex.xml -o $outfilew
+    echo "Render full image without object"
+    mitsuba scenewo_gen_tex.xml -o $outfilewo
     #exit #remove when this actually works
 done
