@@ -2,8 +2,29 @@
 #define POINTS_FROM_DEPTH_CAMERAUTILS_H
 #include <Eigen/Core>
 #include <iostream>
+#include "typedefs.hpp"
+#include <random>
 
 namespace geom {
+
+    template <class T>
+    /**
+     * Generate random angle axis rotation with normally distributed angle and uniformly (on the unit sphere) distributed axis
+     * @param stdev standard deviation of angle
+     * @param axis output axis
+     * @param angle output angle
+     */
+    void randomAngleAxis(T stdev, Vector3<T> &axis, T &angle) {
+        Eigen::Quaternion<T> quat = Eigen::Quaternion<T>::UnitRandom();
+        axis[0] = quat.x();
+        axis[1] = quat.y();
+        axis[2] = quat.z();
+        axis.normalize();
+        std::normal_distribution<T> distribution(0, stdev);
+        static std::default_random_engine generator;
+        angle = distribution(generator);
+    }
+
     template<class T>
     Eigen::Matrix<T, 4, 4> perspective
             (
