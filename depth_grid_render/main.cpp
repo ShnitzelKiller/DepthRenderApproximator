@@ -105,8 +105,12 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
 }
 
 int main(int argc, char** argv) {
+    bool output_masks = false;
+    bool output_scenes = true;
     std::string filename, mask_filename;
     std::string envmap;
+    const std::string object_mask_path = "objectmask.png";
+    const std::string plane_mask_path = "planemask.png";
     const std::string mesh_path = "output_mesh.obj";
     const std::string meshwo_path = "output_meshwo.obj";
     const std::string scene_path = "scene_gen.xml";
@@ -164,6 +168,12 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (parser.cmdOptionExists("output_masks")) {
+        output_masks = true;
+    }
+    if (parser.cmdOptionExists("no_output_scene")) {
+        output_scenes = false;
+    }
     if (parser.cmdOptionExists("s")) {
         scene_version = parser.getCmdOption("s");
         std::cout << "using scene version " << scene_version << std::endl;
@@ -180,11 +190,7 @@ int main(int argc, char** argv) {
       std::cout << "image not found: " << filename << std::endl;
       return 1;
     }
-    const int original_width = depth_img.cols;
-    const int original_height = depth_img.rows;
     //depth_img = max_depth * (1-depth_img); //if transformation is needed
-    cv::resize(depth_img, depth_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
-    std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
     // Read Mask image
     cv::Mat mask_img = cv::imread(mask_filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
@@ -192,14 +198,23 @@ int main(int argc, char** argv) {
       std::cout << "image not found: " << mask_filename << std::endl;
       return 1;
     }
-    cv::resize(mask_img, mask_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
+
     // Subtract out mask
-    cv::Mat mask = cv::max(depth_img == mask_img, 1);
-    mask.convertTo(mask, depth_img.type());
+    cv::Mat mask = (depth_img != mask_img) | (depth_img == 0);
+    if (output_masks) {
+        cv::imwrite(object_mask_path, mask);
+    }
+    mask.convertTo(mask, depth_img.type(), 1/255.f);
     cv::Mat depthwo_img = depth_img.mul(mask);
 
+    const int original_width = depth_img.cols;
+    const int original_height = depth_img.rows;
+    cv::Mat resampled_depth_img;
+    cv::resize(depth_img, resampled_depth_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
+    cv::resize(depthwo_img, depthwo_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
+    std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
-    OBJMesh<float> mesh = createMesh(depth_img, min_depth, max_depth, occlusion_threshold);
+    OBJMesh<float> mesh = createMesh(resampled_depth_img, min_depth, max_depth, occlusion_threshold);
     OBJMesh<float> meshwo = createMesh(depthwo_img, min_depth, max_depth, occlusion_threshold);
 
     std::cout << "finished creating mesh " << std::endl;
@@ -249,55 +264,61 @@ int main(int argc, char** argv) {
     meshwo.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
     const size_t newSize = mesh.GetNumElements();
     std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
-
-    std::vector<float> xs, zs;
-    for (const auto &point : planePoints) {
-        if (point[1] < minHeight + 3*floorEps && point[1] > minHeight - 3*floorEps) {
-            xs.push_back(point[0]);
-            zs.push_back(point[2]);
-        }
+    if (output_masks) {
+        cv::Mat mask = createMask(depth_img, min_depth, max_depth, [&](Vector3<float> p) -> bool { Eigen::Vector4f pp; pp.head(3)=p; pp[3]=1; return (camToWorld*pp)[1] < minHeight + floorEps; });
+        cv::imwrite(plane_mask_path, mask);
     }
-    std::cout << xs.size() << " points in the plane" << std::endl;
-    std::sort(xs.begin(), xs.end());
-    std::sort(zs.begin(), zs.end());
 
-    const float minX = xs[0];
-    const float maxX = xs[xs.size()-1];
-    const float minZ = zs[0];
-    const float maxZ = zs[zs.size()-1];
-    std::cout << "plane dimensions: X [" << minX << ", " << maxX << "], Z [" << minZ << ", " << maxZ << "]" << std::endl;
-    const float scaleX = (maxX - minX) / 2;
-    const float scaleZ = (maxZ - minZ) / 2;
-    const float originX = (maxX + minX) / 2;
-    const float originZ = (maxZ + minZ) / 2;
-    const Eigen::Vector2f planeScale(scaleX, scaleZ);
-    const Eigen::Vector3f planeOrigin(originX, minHeight, originZ);
+    if (output_scenes) {
+        std::ofstream of(mesh_path);
+        mesh.SaveOBJ(of);
+        of.close();
+        std::cout << "saved mesh at " << mesh_path << std::endl;
+        std::ofstream ofwo(meshwo_path);
+        meshwo.SaveOBJ(ofwo);
+        ofwo.close();
+        std::cout << "saved mesh at " << meshwo_path << std::endl;
 
-    std::ofstream of(mesh_path);
-    mesh.SaveOBJ(of);
-    of.close();
-    std::cout << "saved mesh at " << mesh_path << std::endl;
-    std::ofstream ofwo(meshwo_path);
-    meshwo.SaveOBJ(ofwo);
-    ofwo.close();
-    std::cout << "saved mesh at " << meshwo_path << std::endl;
+        std::vector<float> xs, zs;
+        for (const auto &point : planePoints) {
+            if (point[1] < minHeight + 3*floorEps && point[1] > minHeight - 3*floorEps) {
+                xs.push_back(point[0]);
+                zs.push_back(point[2]);
+            }
+        }
+        std::cout << xs.size() << " points in the plane" << std::endl;
+        std::sort(xs.begin(), xs.end());
+        std::sort(zs.begin(), zs.end());
 
-    const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
-    const float lightX = light_radius * cos(light_theta) * cos(light_phi);
-    const float lightY = light_radius * sin(light_phi);
-    auto scene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), mesh_path);
-    std::ofstream sceneof(scene_path);
-    scene->SaveXML(sceneof);
-    sceneof.close();
-    auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), mesh_path, texture_image);
-    std::ofstream texsceneof(textured_scene_path);
-    texscene->SaveXML(texsceneof);
-    texsceneof.close();
-    auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), meshwo_path, texture_image);
-    std::ofstream texscenewoof(textured_scenewo_path);
-    woscene->SaveXML(texscenewoof);
-    texscenewoof.close();
+        const float minX = xs[0];
+        const float maxX = xs[xs.size()-1];
+        const float minZ = zs[0];
+        const float maxZ = zs[zs.size()-1];
+        std::cout << "plane dimensions: X [" << minX << ", " << maxX << "], Z [" << minZ << ", " << maxZ << "]" << std::endl;
+        const float scaleX = (maxX - minX) / 2;
+        const float scaleZ = (maxZ - minZ) / 2;
+        const float originX = (maxX + minX) / 2;
+        const float originZ = (maxZ + minZ) / 2;
+        const Eigen::Vector2f planeScale(scaleX, scaleZ);
+        const Eigen::Vector3f planeOrigin(originX, minHeight, originZ);
 
-    std::cout << "wrote scene files to " << std::endl << scene_path << std::endl << textured_scene_path << std::endl << textured_scenewo_path << std::endl;
+        const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
+        const float lightX = light_radius * cos(light_theta) * cos(light_phi);
+        const float lightY = light_radius * sin(light_phi);
+        auto scene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), mesh_path);
+        std::ofstream sceneof(scene_path);
+        scene->SaveXML(sceneof);
+        sceneof.close();
+        auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), mesh_path, texture_image);
+        std::ofstream texsceneof(textured_scene_path);
+        texscene->SaveXML(texsceneof);
+        texsceneof.close();
+        auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3d(lightX, lightY, lightZ), meshwo_path, texture_image);
+        std::ofstream texscenewoof(textured_scenewo_path);
+        woscene->SaveXML(texscenewoof);
+        texscenewoof.close();
+
+        std::cout << "wrote scene files to " << std::endl << scene_path << std::endl << textured_scene_path << std::endl << textured_scenewo_path << std::endl;
+    }
     return 0;
 }
