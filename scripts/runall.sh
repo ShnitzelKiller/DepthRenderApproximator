@@ -114,7 +114,7 @@ for filename in ${datadir}/*_Y.exr; do
     alpha=$(echo $params | cut -d'_' -f 5)
     echo alpha: $alpha
 
-    $render_cmd $datadir/$depth_map $hdrdir/$env_map $theta $phi $alpha $datadir/$mask_map -ltheta $light_theta -lphi $light_phi
+    $render_cmd $datadir/$depth_map $hdrdir/$env_map $theta $phi $alpha $datadir/$mask_map -ltheta $light_theta -lphi $light_phi -output_masks
     echo "Render lighting image"
     mitsuba scene_gen.xml -o $tmpfile -p $maxcpus
     echo "Compute diffuse reflectance"
