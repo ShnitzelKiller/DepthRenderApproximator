@@ -20,6 +20,7 @@ cd -
 
 cd $datadir
 
+maxcpus=12
 allfiles=$(ls)
 keyfiles=$(printf "$allfiles" | grep _Y.exr$)
 depthfiles=$(printf "$allfiles" | grep Depth)
@@ -115,12 +116,12 @@ for filename in ${datadir}/*_Y.exr; do
 
     $render_cmd $datadir/$depth_map $hdrdir/$env_map $theta $phi $alpha $datadir/$mask_map -ltheta $light_theta -lphi $light_phi
     echo "Render lighting image"
-    mitsuba scene_gen.xml -o $tmpfile
+    mitsuba scene_gen.xml -o $tmpfile -p $maxcpus
     echo "Compute diffuse reflectance"
     $quotient_cmd $datadir/$filename $tmpfile texture.exr
     echo "Render full image"
-    mitsuba scene_gen_tex.xml -o $outfilew
+    mitsuba scene_gen_tex.xml -o $outfilew -p $maxcpus
     echo "Render full image without object"
-    mitsuba scenewo_gen_tex.xml -o $outfilewo
+    mitsuba scenewo_gen_tex.xml -o $outfilewo -p $maxcpus
     #exit #remove when this actually works
 done
