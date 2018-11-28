@@ -116,6 +116,8 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
 }
 
 int main(int argc, char** argv) {
+    srand((unsigned int) time(0));
+
     bool output_masks = false;
     bool output_scenes = true;
     std::string filename, mask_filename;
@@ -203,6 +205,8 @@ int main(int argc, char** argv) {
         std::cout << "random angle magnitude: " << angle_random_magnitude << std::endl;
         if (angle_random_magnitude > 0) {
             geom::randomAngleAxis(angle_random_magnitude, random_axis, random_angle);
+            std::cout << "random axis: " << std::endl << random_axis << std::endl;
+            std::cout << "random angle: " << random_angle << std::endl;
         }
     }
 
@@ -219,6 +223,12 @@ int main(int argc, char** argv) {
     if (!mask_img.data) {
       std::cout << "image not found: " << mask_filename << std::endl;
       return 1;
+    }
+    std::cout << "depth_img: (" << depth_img.cols << ", " << depth_img.rows << ")" << std::endl << "mask_img: (" << mask_img.cols << ", " << mask_img.rows << ")" << std::endl;
+
+    if (mask_img.cols != depth_img.cols || mask_img.rows != depth_img.rows) {
+        std::cout << "depth image and mask image dimensions do not match, aborting" << std::endl;
+        return 1;
     }
 
     // Subtract out mask
@@ -278,7 +288,6 @@ int main(int argc, char** argv) {
 
     std::sort(heights.begin(), heights.end());
     const size_t smallIndex = std::max(depth_img.rows, depth_img.cols) * 2;
-    const size_t largeIndex = n - 1 - smallIndex;
     const float minHeight = heights[smallIndex];
     std::cout << "deleting below " << minHeight << std::endl;
     const size_t oldSize = mesh.GetNumElements();

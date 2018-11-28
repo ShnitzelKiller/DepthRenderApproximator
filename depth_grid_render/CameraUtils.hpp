@@ -21,7 +21,7 @@ namespace geom {
         axis[2] = quat.z();
         axis.normalize();
         std::normal_distribution<T> distribution(0, stdev);
-        static std::default_random_engine generator;
+        static std::default_random_engine generator((unsigned int) time(0));
         angle = distribution(generator);
     }
 
