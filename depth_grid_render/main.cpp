@@ -99,7 +99,6 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     scene->AddChild(integrator);
 
     if (pointlight) {
-        light_pos = light_pos + planeOrigin;
         auto light = make_shared<XMLElement>("emitter", "point");
         auto light_trans = make_shared<XMLElement>("transform");
         light_trans->AddProperty("name", "toWorld");
@@ -123,6 +122,7 @@ int main(int argc, char** argv) {
     bool output_scenes = true;
     std::string filename, mask_filename;
     std::string envmap;
+    const float correction_factor = 8.0f/8.72551f;
     const std::string object_mask_path = "objectmask.png";
     const std::string plane_mask_path = "planemask.png";
     const std::string mesh_path = "output_mesh.obj";
@@ -141,7 +141,7 @@ int main(int argc, char** argv) {
     float light_phi = 0;
     const float light_radius = 52;
     float occlusion_threshold = 1;
-    const float max_depth = 100;
+    const float max_depth = 1000;
     const float min_depth = 1;
     float displacement = 0;
     float angle_random_magnitude = 0;
@@ -247,8 +247,8 @@ int main(int argc, char** argv) {
     cv::resize(depthwo_img, depthwo_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
-    OBJMesh<float> mesh = createMesh(resampled_depth_img, min_depth, max_depth, occlusion_threshold);
-    OBJMesh<float> meshwo = createMesh(depthwo_img, min_depth, max_depth, occlusion_threshold);
+    OBJMesh<float> mesh = createMesh(resampled_depth_img, min_depth, max_depth, occlusion_threshold, correction_factor);
+    OBJMesh<float> meshwo = createMesh(depthwo_img, min_depth, max_depth, occlusion_threshold, correction_factor);
 
     std::cout << "finished creating mesh " << std::endl;
 
@@ -297,7 +297,7 @@ int main(int argc, char** argv) {
     const size_t newSize = mesh.GetNumElements();
     std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
     if (output_masks) {
-        cv::Mat mask = createMask(depth_img, min_depth, max_depth, [&](Vector3<float> p) -> bool { Eigen::Vector4f pp; pp.head(3)=p; pp[3]=1; return (camToWorld*pp)[1] < minHeight + floorEps; });
+        cv::Mat mask = createMask(depth_img, min_depth, max_depth, [&](Vector3<float> p) -> bool { Eigen::Vector4f pp; pp.head(3)=p; pp[3]=1; return (camToWorld*pp)[1] < minHeight + floorEps; }, correction_factor);
         cv::imwrite(plane_mask_path, mask);
     }
 
@@ -333,6 +333,8 @@ int main(int argc, char** argv) {
         const float originZ = (maxZ + minZ) / 2;
         const Eigen::Vector2f planeScale(scaleX, scaleZ);
         const Eigen::Vector3f planeOrigin(originX, minHeight, originZ);
+        std::cout << "plane scale: " << std::endl << planeScale << std::endl;
+        std::cout << "plane origin: " << std::endl << planeOrigin << std::endl;
 
         const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
         const float lightX = light_radius * cos(light_theta) * cos(light_phi);
