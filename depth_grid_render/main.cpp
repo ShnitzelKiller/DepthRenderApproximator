@@ -15,7 +15,7 @@ void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, const Eigen::Vector3f &planeOrigin, const Eigen::Vector2f &planeScale, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0) {
+std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0) {
     using namespace std;
     ostringstream eye;
     eye << camOrigin[0] << ", " << camOrigin[1] << ", " << camOrigin[2];
@@ -58,18 +58,13 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     auto plane_trans = make_shared<XMLElement>("transform");
     plane_trans->AddProperty("name", "toWorld");
     auto plane_scale = make_shared<XMLElement>("scale");
-    plane_scale->AddProperty("x", std::to_string(planeScale[0]));
-    plane_scale->AddProperty("y", std::to_string(planeScale[1]));
+    plane_scale->AddProperty("x", "8");
+    plane_scale->AddProperty("y", "8");
     auto plane_rotate = make_shared<XMLElement>("rotate");
     plane_rotate->AddProperty("x", "1");
     plane_rotate->AddProperty("angle", "-90");
-    auto plane_translate = make_shared<XMLElement>("translate");
-    plane_translate->AddProperty("x", std::to_string(planeOrigin[0]));
-    plane_translate->AddProperty("y", std::to_string(planeOrigin[1]));
-    plane_translate->AddProperty("z", std::to_string(planeOrigin[2]));
     plane_trans->AddChild(plane_scale);
     plane_trans->AddChild(plane_rotate);
-    plane_trans->AddChild(plane_translate);
     plane->AddChild(plane_trans);
     auto plane_bsdf = make_shared<XMLElement>("bsdf", "roughplastic");
     plane_bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
@@ -292,7 +287,6 @@ int main(int argc, char** argv) {
     std::cout << "transforming mesh" << std::endl;
 
     std::vector<float> heights;
-    std::vector<Eigen::Vector3f> planePoints;
     const size_t n = mesh.GetNumVertices();
     for (int i=1; i<=n; i++) {
       Vector3<float> &vert = mesh.GetVertex(i);
@@ -301,7 +295,6 @@ int main(int argc, char** argv) {
       vert4[3] = 1;
       vert4 = camToWorld * vert4;
       vert = vert4.head(3);
-      planePoints.push_back(vert);
       heights.push_back(vert[1]);
     }
     for (int i=1; i<=meshwo.GetNumVertices(); i++) {
@@ -337,43 +330,18 @@ int main(int argc, char** argv) {
         ofwo.close();
         std::cout << "saved mesh at " << meshwo_path << std::endl;
 
-        std::vector<float> xs, zs;
-        for (const auto &point : planePoints) {
-            if (point[1] < minHeight + 3*floorEps && point[1] > minHeight - 3*floorEps) {
-                xs.push_back(point[0]);
-                zs.push_back(point[2]);
-            }
-        }
-        std::cout << xs.size() << " points in the plane" << std::endl;
-        std::sort(xs.begin(), xs.end());
-        std::sort(zs.begin(), zs.end());
-
-        const float minX = xs[0];
-        const float maxX = xs[xs.size()-1];
-        const float minZ = zs[0];
-        const float maxZ = zs[zs.size()-1];
-        std::cout << "plane dimensions: X [" << minX << ", " << maxX << "], Z [" << minZ << ", " << maxZ << "]" << std::endl;
-        const float scaleX = (maxX - minX) / 2;
-        const float scaleZ = (maxZ - minZ) / 2;
-        const float originX = (maxX + minX) / 2;
-        const float originZ = (maxZ + minZ) / 2;
-        const Eigen::Vector2f planeScale(scaleX, scaleZ);
-        const Eigen::Vector3f planeOrigin(originX, minHeight, originZ);
-        std::cout << "plane scale: " << std::endl << planeScale << std::endl;
-        std::cout << "plane origin: " << std::endl << planeOrigin << std::endl;
-
         const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
         const float lightX = light_radius * cos(light_theta) * cos(light_phi);
         const float lightY = light_radius * sin(light_phi);
-        auto scene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis, random_angle, random_axis_light, random_angle_light);
+        auto scene = buildScene(original_width, original_height, envmap, alpha, eye, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis, random_angle, random_axis_light, random_angle_light);
         std::ofstream sceneof(scene_path);
         scene->SaveXML(sceneof);
         sceneof.close();
-        auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, texture_image, random_axis, random_angle, random_axis_light, random_angle_light);
+        auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, texture_image, random_axis, random_angle, random_axis_light, random_angle_light);
         std::ofstream texsceneof(textured_scene_path);
         texscene->SaveXML(texsceneof);
         texsceneof.close();
-        auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, texture_image, random_axis, random_angle, random_axis_light, random_angle_light);
+        auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, texture_image, random_axis, random_angle, random_axis_light, random_angle_light);
         std::ofstream texscenewoof(textured_scenewo_path);
         woscene->SaveXML(texscenewoof);
         texscenewoof.close();
