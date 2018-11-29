@@ -15,7 +15,7 @@ void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, const Eigen::Vector3f &planeOrigin, const Eigen::Vector2f &planeScale, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0) {
+std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, const Eigen::Vector3f &planeOrigin, const Eigen::Vector2f &planeScale, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0) {
     using namespace std;
     ostringstream eye;
     eye << camOrigin[0] << ", " << camOrigin[1] << ", " << camOrigin[2];
@@ -107,8 +107,16 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
         translate->AddProperty("y", std::to_string(light_pos[1]));
         translate->AddProperty("z", std::to_string(light_pos[2]));
         light_trans->AddChild(translate);
+        if (random_angle_light != 0) {
+            auto light_rotate = make_shared<XMLElement>("rotate");
+            light_rotate->AddProperty("x", std::to_string(random_axis_light.x()));
+            light_rotate->AddProperty("y", std::to_string(random_axis_light.y()));
+            light_rotate->AddProperty("z", std::to_string(random_axis_light.z()));
+            light_rotate->AddProperty("angle", std::to_string(random_angle_light));
+            light_trans->AddChild(light_rotate);
+        }
         light->AddChild(light_trans);
-	light->AddChild(make_shared<XMLElement>("spectrum", "intensity", "400"));
+	    light->AddChild(make_shared<XMLElement>("spectrum", "intensity", "400"));
         scene->AddChild(light);
     }
 
@@ -145,8 +153,11 @@ int main(int argc, char** argv) {
     const float min_depth = 1;
     float displacement = 0;
     float angle_random_magnitude = 0;
+    float alpha_random_std = 0;
     Eigen::Vector3f random_axis;
     float random_angle = 0;
+    Eigen::Vector3f random_axis_light;
+    float random_angle_light = 0;
     bool light = false;
     std::string scene_version("0.6.0");
 
@@ -201,13 +212,28 @@ int main(int argc, char** argv) {
         std::cout << "scale factor: " << scale_factor << std::endl;
     }
 
-    if (parser.cmdOptionExists("rand")) {
-        angle_random_magnitude = std::stof(parser.getCmdOption("rand"));
+    if (parser.cmdOptionExists("randang")) {
+        angle_random_magnitude = std::stof(parser.getCmdOption("randang"));
         std::cout << "random angle magnitude: " << angle_random_magnitude << std::endl;
         if (angle_random_magnitude > 0) {
             geom::randomAngleAxis(angle_random_magnitude, random_axis, random_angle);
-            std::cout << "random axis: " << std::endl << random_axis << std::endl;
-            std::cout << "random angle: " << random_angle << std::endl;
+            std::cout << "random axis1: " << std::endl << random_axis << std::endl;
+            std::cout << "random angle1: " << random_angle << std::endl;
+
+            geom::randomAngleAxis(angle_random_magnitude, random_axis_light, random_angle_light);
+            std::cout << "random axis2: " << std::endl << random_axis_light << std::endl;
+            std::cout << "random angle2: " << random_angle_light << std::endl;
+        }
+    }
+
+    if (parser.cmdOptionExists("randalpha")) {
+        alpha_random_std = std::stof(parser.getCmdOption("randalpha"));
+        std::cout << "random alpha magnitude: " << alpha_random_std << std::endl;
+        if (alpha_random_std > 0) {
+            std::default_random_engine generator((unsigned int) time(0));
+            std::normal_distribution<float> distribution(0, alpha_random_std);
+            alpha = std::max(0.0f, alpha - std::fabs(distribution(generator)));
+            std::cout << "perturbed alpha: " << alpha << std::endl;
         }
     }
 
@@ -339,15 +365,15 @@ int main(int argc, char** argv) {
         const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
         const float lightX = light_radius * cos(light_theta) * cos(light_phi);
         const float lightY = light_radius * sin(light_phi);
-        auto scene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis, random_angle);
+        auto scene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis, random_angle, random_axis_light, random_angle_light);
         std::ofstream sceneof(scene_path);
         scene->SaveXML(sceneof);
         sceneof.close();
-        auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, texture_image, random_axis, random_angle);
+        auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, texture_image, random_axis, random_angle, random_axis_light, random_angle_light);
         std::ofstream texsceneof(textured_scene_path);
         texscene->SaveXML(texsceneof);
         texsceneof.close();
-        auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, texture_image, random_axis, random_angle);
+        auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, planeOrigin, planeScale, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, texture_image, random_axis, random_angle, random_axis_light, random_angle_light);
         std::ofstream texscenewoof(textured_scenewo_path);
         woscene->SaveXML(texscenewoof);
         texscenewoof.close();
