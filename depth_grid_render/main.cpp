@@ -15,7 +15,7 @@ void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0) {
+std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0) {
     using namespace std;
     ostringstream eye;
     eye << camOrigin[0] << ", " << camOrigin[1] << ", " << camOrigin[2];
@@ -53,6 +53,12 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
         bsdf->AddChild(texture);
     }
     shape->AddChild(bsdf);
+    auto shape_transform = make_shared<XMLElement>("transform");
+    shape_transform->AddProperty("name", "toWorld");
+    auto shape_translate = make_shared<XMLElement>("translate");
+    shape_translate->AddProperty("y", std::to_string(-plane_height));
+    shape_transform->AddChild(shape_translate);
+    shape->AddChild(shape_transform);
 
     auto plane = make_shared<XMLElement>("shape", "rectangle");
     auto plane_trans = make_shared<XMLElement>("transform");
@@ -333,15 +339,15 @@ int main(int argc, char** argv) {
         const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
         const float lightX = light_radius * cos(light_theta) * cos(light_phi);
         const float lightY = light_radius * sin(light_phi);
-        auto scene = buildScene(original_width, original_height, envmap, alpha, eye, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis, random_angle, random_axis_light, random_angle_light);
+        auto scene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis, random_angle, random_axis_light, random_angle_light);
         std::ofstream sceneof(scene_path);
         scene->SaveXML(sceneof);
         sceneof.close();
-        auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, texture_image, random_axis, random_angle, random_axis_light, random_angle_light);
+        auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, texture_image, random_axis, random_angle, random_axis_light, random_angle_light);
         std::ofstream texsceneof(textured_scene_path);
         texscene->SaveXML(texsceneof);
         texsceneof.close();
-        auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, texture_image, random_axis, random_angle, random_axis_light, random_angle_light);
+        auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, texture_image, random_axis, random_angle, random_axis_light, random_angle_light);
         std::ofstream texscenewoof(textured_scenewo_path);
         woscene->SaveXML(texscenewoof);
         texscenewoof.close();
