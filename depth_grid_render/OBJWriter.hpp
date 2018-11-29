@@ -62,7 +62,7 @@ public:
         tris.push_back(f);
     }
 
-    void SaveOBJ(std::ofstream &of) const {
+  void SaveOBJ(std::ofstream &of, bool flip_normals=false) const {
         for (const auto &vert : verts) {
             of << "v " << vert[0] << " " << vert[1] << " " << vert[2] << std::endl;
         }
@@ -73,9 +73,15 @@ public:
         of << "usemtl textured" << std::endl;
         for (const auto &tri : tris) {
             of << "f";
-            for (int i = 0; i < 3; i++) {
+	    if (flip_normals) {
+	      for (int i=2; i >= 0; i--) {
+		of << " " << tri[i] << "/" << tri[i];
+	      }
+	    } else {
+	      for (int i = 0; i < 3; i++) {
                 of << " " << tri[i] << "/" << tri[i];
-            }
+	      }
+	    }
             of << std::endl;
         }
         std::ofstream mf("material.mtl");
