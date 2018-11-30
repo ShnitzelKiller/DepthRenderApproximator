@@ -21,7 +21,7 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     eye << camOrigin[0] << ", " << camOrigin[1] << ", " << camOrigin[2];
 
     auto scene = make_shared<XMLElement>("scene");
-    scene->AddProperty("version", std::move(scene_version));
+    scene->AddProperty("version", move(scene_version));
 
     auto camera = make_shared<XMLElement>("sensor", "perspective");
     auto sampler = make_shared<XMLElement>("sampler", "ldsampler");
@@ -29,12 +29,11 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     camera->AddChild(sampler);
     camera->AddChild(make_shared<XMLElement>("float", "fov", "45"));
     auto film = make_shared<XMLElement>("film", "hdrfilm");
-    film->AddChild(make_shared<XMLElement>("integer", "width", std::to_string(width)));
-    film->AddChild(make_shared<XMLElement>("integer", "height", std::to_string(height)));
+    film->AddChild(make_shared<XMLElement>("integer", "width", to_string(width)));
+    film->AddChild(make_shared<XMLElement>("integer", "height", to_string(height)));
     film->AddChild(make_shared<XMLElement>("boolean", "banner", "false"));
     camera->AddChild(film);
-    auto cam_trans = make_shared<XMLElement>("transform");
-    cam_trans->AddProperty("name", "toWorld");
+    auto cam_trans = XMLElement::Transform("toWorld");
     auto look_at = make_shared<XMLElement>("lookat");
     look_at->AddProperty("origin", eye.str());
     look_at->AddProperty("target", "0, 1, 0");
@@ -53,14 +52,11 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
         bsdf->AddChild(texture);
     }
     shape->AddChild(bsdf);
-    auto shape_transform = make_shared<XMLElement>("transform");
-    shape_transform->AddProperty("name", "toWorld");
-    auto shape_translate = make_shared<XMLElement>("translate");
-    shape_translate->AddProperty("y", std::to_string(-plane_height));
+    auto shape_transform = XMLElement::Transform("toWorld");
+    auto shape_translate = XMLElement::Translation(0.0f, -plane_height, 0.0f);
     shape_transform->AddChild(shape_translate);
     if (flipped) {
-      auto shape_scale = make_shared<XMLElement>("scale");
-      shape_scale->AddProperty("y", "-1");
+      auto shape_scale = XMLElement::Scale(1, -1, 1);
       shape_transform->AddChild(shape_scale);
       shape->AddChild(make_shared<XMLElement>("boolean", "flipNormals", "true"));
     }
@@ -68,14 +64,9 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
 
     if (!flipped) {
       auto plane = make_shared<XMLElement>("shape", "rectangle");
-      auto plane_trans = make_shared<XMLElement>("transform");
-      plane_trans->AddProperty("name", "toWorld");
-      auto plane_scale = make_shared<XMLElement>("scale");
-      plane_scale->AddProperty("x", "8");
-      plane_scale->AddProperty("y", "8");
-      auto plane_rotate = make_shared<XMLElement>("rotate");
-      plane_rotate->AddProperty("x", "1");
-      plane_rotate->AddProperty("angle", "-90");
+      auto plane_trans = XMLElement::Transform("toWorld");
+      auto plane_scale = XMLElement::Scale(8, 8, 1);
+      auto plane_rotate = XMLElement::Rotation(0, -90);
       plane_trans->AddChild(plane_scale);
       plane_trans->AddChild(plane_rotate);
       plane->AddChild(plane_trans);
@@ -88,19 +79,15 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     auto emitter = make_shared<XMLElement>("emitter", "envmap");
     emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
     if (random_angle != 0) {
-        auto env_transform = make_shared<XMLElement>("transform");
-        env_transform->AddProperty("name", "toWorld");
-        auto env_rotate = make_shared<XMLElement>("rotate");
-        env_rotate->AddProperty("x", std::to_string(random_axis.x()));
-        env_rotate->AddProperty("y", std::to_string(random_axis.y()));
-        env_rotate->AddProperty("z", std::to_string(random_axis.z()));
-        env_rotate->AddProperty("angle", std::to_string(random_angle));
+        auto env_transform = XMLElement::Transform("toWorld");
+        auto env_rotate = XMLElement::Rotation(random_axis.x(), random_axis.y(), random_axis.z(), random_angle);
         env_transform->AddChild(env_rotate);
         emitter->AddChild(env_transform);
     }
 
     if (flipped) {
       //TODO: world Y position integrator or some visualization that captures the reflected geometry
+      //also remove the emitters if we do that?
     } else {
       auto integrator = make_shared<XMLElement>("integrator", "path");
       integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "3"));
@@ -114,19 +101,11 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
 
     if (pointlight) {
         auto light = make_shared<XMLElement>("emitter", "point");
-        auto light_trans = make_shared<XMLElement>("transform");
-        light_trans->AddProperty("name", "toWorld");
-        auto translate = make_shared<XMLElement>("translate");
-        translate->AddProperty("x", std::to_string(light_pos[0]));
-        translate->AddProperty("y", std::to_string(light_pos[1]));
-        translate->AddProperty("z", std::to_string(light_pos[2]));
+        auto light_trans = XMLElement::Transform("toWorld");
+        auto translate = XMLElement::Translation(light_pos.x(), light_pos.y(), light_pos.z());
         light_trans->AddChild(translate);
         if (random_angle_light != 0) {
-            auto light_rotate = make_shared<XMLElement>("rotate");
-            light_rotate->AddProperty("x", std::to_string(random_axis_light.x()));
-            light_rotate->AddProperty("y", std::to_string(random_axis_light.y()));
-            light_rotate->AddProperty("z", std::to_string(random_axis_light.z()));
-            light_rotate->AddProperty("angle", std::to_string(random_angle_light));
+            auto light_rotate = XMLElement::Rotation(random_axis_light.x(), random_axis_light.y(), random_axis_light.z(), random_angle_light);
             light_trans->AddChild(light_rotate);
         }
         light->AddChild(light_trans);

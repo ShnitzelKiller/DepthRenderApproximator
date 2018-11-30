@@ -42,6 +42,76 @@ public:
     void SaveXML(std::ofstream &of) const {
         SaveXML(of, 0);
     }
+    /**
+     * construct a rotation element around the axis (x, y, z)
+     */
+    template <class T>
+    static std::shared_ptr<XMLElement> Rotation(T x, T y, T z, T angle) {
+        auto rot = std::make_shared<XMLElement>("rotate");
+        rot->AddProperty("x", std::to_string(x));
+        rot->AddProperty("y", std::to_string(y));
+        rot->AddProperty("z", std::to_string(z));
+        rot->AddProperty("angle", std::to_string(angle));
+        return rot;
+    }
+
+    /**
+     * construct a rotation element around a single axis (0, 1, or 2)
+     */
+    template <class T>
+    static std::shared_ptr<XMLElement> Rotation(int axis, T angle) {
+        auto rot = std::make_shared<XMLElement>("rotate");
+        switch (axis) {
+            case 0:
+                rot->AddProperty("x", "1");
+                break;
+            case 1:
+                rot->AddProperty("y", "1");
+                break;
+            default:
+                rot->AddProperty("z", "1");
+                break;
+
+        }
+        rot->AddProperty("angle", std::to_string(angle));
+        return rot;
+    }
+
+    /**
+     * Construct a translation element
+     */
+    template <class T>
+    static std::shared_ptr<XMLElement> Translation(T x, T y, T z) {
+        auto trans = std::make_shared<XMLElement>("translate");
+        if (x != 0)
+            trans->AddProperty("x", std::to_string(x));
+        if (y != 0)
+            trans->AddProperty("y", std::to_string(y));
+        if (z != 0)
+            trans->AddProperty("z", std::to_string(y));
+        return trans;
+    }
+
+    /**
+     * Construct a scale element
+     */
+    template <class T>
+    static std::shared_ptr<XMLElement> Scale(T x, T y, T z) {
+        auto trans = std::make_shared<XMLElement>("scale");
+        if (x != 1)
+            trans->AddProperty("x", std::to_string(x));
+        if (y != 1)
+            trans->AddProperty("y", std::to_string(y));
+        if (z != 1)
+            trans->AddProperty("z", std::to_string(y));
+        return trans;
+    }
+
+    static std::shared_ptr<XMLElement> Transform(std::string name) {
+        auto transform = std::make_shared<XMLElement>("transform");
+        transform->AddProperty("name", std::move(name));
+        return transform;
+    }
 private:
     void SaveXML(std::ofstream &of,int indent) const {
         for (int i=0; i<indent; i++) {
