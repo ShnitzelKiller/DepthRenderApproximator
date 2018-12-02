@@ -383,7 +383,7 @@ int main(int argc, char** argv) {
         flippedwoscene->SaveXML(flippedscenewoof);
         flippedscenewoof.close();
 
-        auto specscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis, random_angle, random_axis_light, random_angle_light, specular);
+        auto specscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis, random_angle, random_axis_light, random_angle_light, specular);
         std::ofstream specsceneof(spec_scene_path);
         specscene->SaveXML(specsceneof);
         specsceneof.close();
