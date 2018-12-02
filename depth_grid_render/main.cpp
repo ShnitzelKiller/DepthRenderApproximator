@@ -11,11 +11,13 @@
 #include <math.h>
 #include <limits>
 
+enum SceneMode {normal, flip, specular};
+
 void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, bool flipped=false) {
+std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal) {
     using namespace std;
     ostringstream eye;
     eye << camOrigin[0] << ", " << camOrigin[1] << ", " << camOrigin[2];
@@ -43,26 +45,36 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
 
     auto shape = make_shared<XMLElement>("shape", "obj");
     shape->AddChild(make_shared<XMLElement>("string", "filename", meshPath));
-    auto bsdf = make_shared<XMLElement>("bsdf", "diffuse");
-    bsdf->AddChild(make_shared<XMLElement>("spectrum", "reflectance", "1"));
-    if (!meshTexture.empty()) {
-        auto texture = make_shared<XMLElement>("texture", "bitmap");
-        texture->AddProperty("name", "diffuseReflectance");
-        texture->AddChild(make_shared<XMLElement>("string", "filename", meshTexture));
-        bsdf->AddChild(texture);
+    if (mode == normal) {
+        auto bsdf = make_shared<XMLElement>("bsdf", "diffuse");
+        bsdf->AddChild(make_shared<XMLElement>("spectrum", "reflectance", "1"));
+        if (!meshTexture.empty()) {
+            auto texture = make_shared<XMLElement>("texture", "bitmap");
+            texture->AddProperty("name", "diffuseReflectance");
+            texture->AddChild(make_shared<XMLElement>("string", "filename", meshTexture));
+            bsdf->AddChild(texture);
+        }
+        shape->AddChild(bsdf);
+    } else if (mode == specular) {
+        auto area_emitter = make_shared<XMLElement>("emitter", "area");
+        area_emitter->AddChild(make_shared<XMLElement>("spectrum", "radiance", "1"));
+        shape->AddChild(area_emitter);
     }
-    shape->AddChild(bsdf);
+
     auto shape_transform = XMLElement::Transform("toWorld");
-    auto shape_translate = XMLElement::Translation(0.0f, -plane_height, 0.0f);
-    shape_transform->AddChild(shape_translate);
-    if (flipped) {
+    if (mode != specular) {
+        //only correct if not emissive to workaround error?
+        auto shape_translate = XMLElement::Translation(0.0f, -plane_height, 0.0f);
+        shape_transform->AddChild(shape_translate);
+    }
+    if (mode == flip) {
       auto shape_scale = XMLElement::Scale(1, -1, 1);
       shape_transform->AddChild(shape_scale);
       shape->AddChild(make_shared<XMLElement>("boolean", "flipNormals", "true"));
     }
     shape->AddChild(shape_transform);
 
-    if (!flipped) {
+    if (mode != flip) {
       auto plane = make_shared<XMLElement>("shape", "rectangle");
       auto plane_trans = XMLElement::Transform("toWorld");
       auto plane_scale = XMLElement::Scale(8, 8, 1);
@@ -72,46 +84,55 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
       plane->AddChild(plane_trans);
       auto plane_bsdf = make_shared<XMLElement>("bsdf", "roughplastic");
       plane_bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
+      if (mode == specular) {
+          plane_bsdf->AddChild(make_shared<XMLElement>("spectrum", "diffuseReflectance", "0")); //disable diffuse component for rendering reflection image
+      }
       plane->AddChild(plane_bsdf);
       scene->AddChild(plane);
     }
 
-    auto emitter = make_shared<XMLElement>("emitter", "envmap");
-    emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
-    if (random_angle != 0) {
-        auto env_transform = XMLElement::Transform("toWorld");
-        auto env_rotate = XMLElement::Rotation(random_axis.x(), random_axis.y(), random_axis.z(), random_angle);
-        env_transform->AddChild(env_rotate);
-        emitter->AddChild(env_transform);
+    if (mode != specular) {
+        auto emitter = make_shared<XMLElement>("emitter", "envmap");
+        emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
+        if (random_angle != 0) {
+            auto env_transform = XMLElement::Transform("toWorld");
+            auto env_rotate = XMLElement::Rotation(random_axis.x(), random_axis.y(), random_axis.z(), random_angle);
+            env_transform->AddChild(env_rotate);
+            emitter->AddChild(env_transform);
+        }
+        scene->AddChild(emitter);
+        if (pointlight) {
+            auto light = make_shared<XMLElement>("emitter", "point");
+            auto light_trans = XMLElement::Transform("toWorld");
+            auto translate = XMLElement::Translation(light_pos.x(), light_pos.y(), light_pos.z());
+            light_trans->AddChild(translate);
+            if (random_angle_light != 0) {
+                auto light_rotate = XMLElement::Rotation(random_axis_light.x(), random_axis_light.y(), random_axis_light.z(), random_angle_light);
+                light_trans->AddChild(light_rotate);
+            }
+            light->AddChild(light_trans);
+            light->AddChild(make_shared<XMLElement>("spectrum", "intensity", "400"));
+            scene->AddChild(light);
+        }
     }
 
-    if (flipped) {
-      //TODO: world Y position integrator or some visualization that captures the reflected geometry
-      //also remove the emitters if we do that?
-    } else {
-      auto integrator = make_shared<XMLElement>("integrator", "path");
-      integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "3"));
-      scene->AddChild(integrator);
+
+    if (mode == flip) {
+        //TODO: world Y position integrator or some visualization that captures the reflected geometry
+        //also remove the emitters if we do that?
+    } else if (mode == specular) {
+        auto integrator = make_shared<XMLElement>("integrator", "path");
+        integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "3"));
+        scene->AddChild(integrator);
+    } else if (mode == normal) {
+        auto integrator = make_shared<XMLElement>("integrator", "path");
+        integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "3"));
+        scene->AddChild(integrator);
     }
     
 
     scene->AddChild(camera);
     scene->AddChild(shape);
-    scene->AddChild(emitter);
-
-    if (pointlight) {
-        auto light = make_shared<XMLElement>("emitter", "point");
-        auto light_trans = XMLElement::Transform("toWorld");
-        auto translate = XMLElement::Translation(light_pos.x(), light_pos.y(), light_pos.z());
-        light_trans->AddChild(translate);
-        if (random_angle_light != 0) {
-            auto light_rotate = XMLElement::Rotation(random_axis_light.x(), random_axis_light.y(), random_axis_light.z(), random_angle_light);
-            light_trans->AddChild(light_rotate);
-        }
-        light->AddChild(light_trans);
-	    light->AddChild(make_shared<XMLElement>("spectrum", "intensity", "400"));
-        scene->AddChild(light);
-    }
 
     return scene;
 }
@@ -134,6 +155,8 @@ int main(int argc, char** argv) {
     const std::string textured_scenewo_path = "scenewo_gen_tex.xml";
     const std::string flipped_scene_path = "scene_gen_flipped.xml";
     const std::string flipped_scenewo_path = "scenewo_gen_flipped.xml";
+    const std::string spec_scene_path = "scene_gen_spec.xml";
+    const std::string spec_scenewo_path = "scenewo_gen_spec.xml";
     
     float scale_factor = 0.5;
     const float floorEps = 5e-2;
@@ -350,18 +373,28 @@ int main(int argc, char** argv) {
         woscene->SaveXML(texscenewoof);
         texscenewoof.close();
 	
-	auto flippedscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis, random_angle, random_axis_light, random_angle_light, true);
-	std::ofstream flippedsceneof(flipped_scene_path);
-	flippedscene->SaveXML(flippedsceneof);
-	flippedsceneof.close();
+        auto flippedscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis, random_angle, random_axis_light, random_angle_light, flip);
+        std::ofstream flippedsceneof(flipped_scene_path);
+        flippedscene->SaveXML(flippedsceneof);
+        flippedsceneof.close();
 
-	auto flippedwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis, random_angle, random_axis_light, random_angle_light, true);
-	std::ofstream flippedscenewoof(flipped_scenewo_path);
-	flippedwoscene->SaveXML(flippedscenewoof);
-	flippedscenewoof.close();
+        auto flippedwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis, random_angle, random_axis_light, random_angle_light, flip);
+        std::ofstream flippedscenewoof(flipped_scenewo_path);
+        flippedwoscene->SaveXML(flippedscenewoof);
+        flippedscenewoof.close();
+
+        auto specscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis, random_angle, random_axis_light, random_angle_light, specular);
+        std::ofstream specsceneof(spec_scene_path);
+        specscene->SaveXML(specsceneof);
+        specsceneof.close();
+
+        auto specwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis, random_angle, random_axis_light, random_angle_light, specular);
+        std::ofstream specscenewoof(spec_scenewo_path);
+        specwoscene->SaveXML(specscenewoof);
+        specscenewoof.close();
 
 
-        std::cout << "wrote scene files to " << std::endl << scene_path << std::endl << textured_scene_path << std::endl << textured_scenewo_path << std::endl << flipped_scene_path << std::endl << flipped_scenewo_path << std::endl;
+        std::cout << "wrote scene files to " << std::endl << scene_path << std::endl << textured_scene_path << std::endl << textured_scenewo_path << std::endl << flipped_scene_path << std::endl << flipped_scenewo_path << std::endl << spec_scene_path << std::endl << spec_scenewo_path << std::endl;
     }
     return 0;
 }
