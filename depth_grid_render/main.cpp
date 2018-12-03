@@ -315,23 +315,15 @@ int main(int argc, char** argv) {
     std::cout << "transforming mesh" << std::endl;
 
     std::vector<float> heights;
+
+    mesh.Transform(camToWorld);
+    meshwo.Transform(camToWorld);
+    meshobj.Transform(camToWorld);
+
     const size_t n = mesh.GetNumVertices();
     for (int i=1; i<=n; i++) {
-      Vector3<float> &vert = mesh.GetVertex(i);
-      Eigen::Vector4f vert4;
-      vert4.head(3) = vert;
-      vert4[3] = 1;
-      vert4 = camToWorld * vert4;
-      vert = vert4.head(3);
-      heights.push_back(vert[1]);
-    }
-    for (int i=1; i<=meshwo.GetNumVertices(); i++) {
-      Vector3<float> &vert = meshwo.GetVertex(i);
-      Eigen::Vector4f vert4;
-      vert4.head(3) = vert;
-      vert4[3] = 1;
-      vert4 = camToWorld * vert4;
-      vert = vert4.head(3);
+        Vector3<float> &vert = mesh.GetVertex(i);
+        heights.push_back(vert[1]);
     }
 
     std::sort(heights.begin(), heights.end());

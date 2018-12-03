@@ -110,6 +110,18 @@ public:
     tris.erase(search, tris.end());
   }
 
+  void Transform(Eigen::Matrix<T, 4, 4> &transform) {
+    Eigen::Matrix4Xf allverts(4, verts.size());
+      for (int i=0; i<verts.size(); i++) {
+        allverts.col(i).head(3) = verts[i];
+        allverts(3, i) = 1;
+      }
+      allverts = transform * allverts;
+      for (int i=0; i<verts.size(); i++) {
+          verts[i] = allverts.col(i).head(3);
+      }
+    }
+
 private:
     std::vector<Vector3<T>> verts;
     std::vector<Vector2<T>> uvs;
