@@ -150,12 +150,13 @@ int main(int argc, char** argv) {
     const std::string plane_mask_path = "planemask.png";
     const std::string mesh_path = "output_mesh.obj";
     const std::string meshwo_path = "output_meshwo.obj";
+    const std::string meshobj_path = "output_meshobj.obj";
     const std::string scene_path = "scene_gen.xml";
     const std::string textured_scene_path = "scene_gen_tex.xml";
     const std::string textured_scenewo_path = "scenewo_gen_tex.xml";
     const std::string flipped_scene_path = "scene_gen_flipped.xml";
     const std::string flipped_scenewo_path = "scenewo_gen_flipped.xml";
-    const std::string spec_scene_path = "scene_gen_spec.xml";
+    const std::string spec_sceneobj_path = "sceneobj_gen_spec.xml";
     const std::string spec_scenewo_path = "scenewo_gen_spec.xml";
     
     float scale_factor = 0.5;
@@ -291,10 +292,12 @@ int main(int argc, char** argv) {
     cv::Mat resampled_depth_img;
     cv::resize(depth_img, resampled_depth_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
     cv::resize(depthwo_img, depthwo_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
+    cv::resize(mask_img, mask_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
     OBJMesh<float> mesh = createMesh(resampled_depth_img, min_depth, max_depth, occlusion_threshold, correction_factor);
     OBJMesh<float> meshwo = createMesh(depthwo_img, min_depth, max_depth, occlusion_threshold, correction_factor);
+    OBJMesh<float> meshobj = createMesh(mask_img, min_depth, max_depth, occlusion_threshold, correction_factor);
 
     std::cout << "finished creating mesh " << std::endl;
 
@@ -338,6 +341,7 @@ int main(int argc, char** argv) {
     const size_t oldSize = mesh.GetNumElements();
     mesh.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
     meshwo.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
+    meshobj.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
     const size_t newSize = mesh.GetNumElements();
     std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
     if (output_masks) {
@@ -354,6 +358,10 @@ int main(int argc, char** argv) {
         meshwo.SaveOBJ(ofwo);
         ofwo.close();
         std::cout << "saved (wo) mesh at " << meshwo_path << std::endl;
+        std::ofstream ofobj(meshobj_path);
+        meshobj.SaveOBJ(ofobj);
+        ofobj.close();
+        std::cout << "saved (obj) mesh at " << meshobj_path << std::endl;
 
         const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
         const float lightX = light_radius * cos(light_theta) * cos(light_phi);
@@ -383,10 +391,10 @@ int main(int argc, char** argv) {
         flippedwoscene->SaveXML(flippedscenewoof);
         flippedscenewoof.close();
 
-        auto specscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis, random_angle, random_axis_light, random_angle_light, specular);
-        std::ofstream specsceneof(spec_scene_path);
-        specscene->SaveXML(specsceneof);
-        specsceneof.close();
+        auto specobjscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshobj_path, "", random_axis, random_angle, random_axis_light, random_angle_light, specular);
+        std::ofstream specsceneobjof(spec_sceneobj_path);
+        specobjscene->SaveXML(specsceneobjof);
+        specsceneobjof.close();
 
         auto specwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,  scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis, random_angle, random_axis_light, random_angle_light, specular);
         std::ofstream specscenewoof(spec_scenewo_path);
@@ -394,7 +402,7 @@ int main(int argc, char** argv) {
         specscenewoof.close();
 
 
-        std::cout << "wrote scene files to " << std::endl << scene_path << std::endl << textured_scene_path << std::endl << textured_scenewo_path << std::endl << flipped_scene_path << std::endl << flipped_scenewo_path << std::endl << spec_scene_path << std::endl << spec_scenewo_path << std::endl;
+        std::cout << "wrote scene files to " << std::endl << scene_path << std::endl << textured_scene_path << std::endl << textured_scenewo_path << std::endl << flipped_scene_path << std::endl << flipped_scenewo_path << std::endl << spec_sceneobj_path << std::endl << spec_scenewo_path << std::endl;
     }
     return 0;
 }
