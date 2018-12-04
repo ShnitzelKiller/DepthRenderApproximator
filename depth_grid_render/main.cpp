@@ -442,7 +442,7 @@ int main(int argc, char** argv) {
     }
 
     if (scene_mask[5] != '0') {
-        const std::string spec_scene_path = "sceneobj_gen_spec.xml";
+        const std::string spec_scene_path = "scene_gen_spec.xml";
         auto specscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
                                        scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path,
                                        "", random_axis, random_angle, random_axis_light, random_angle_light,
