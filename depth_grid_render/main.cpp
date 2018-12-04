@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
     float scale_factor = 0.5;
     const float floorEps = 5e-2;
     const float floor_normal_angle_range = 60;
-    const std::string texture_image = "texture.exr";
+    std::string texture_image = "texture.exr";
     float phi = 0;
     float theta = 0;
     float alpha = 0;
@@ -261,6 +261,11 @@ int main(int argc, char** argv) {
             alpha = std::max(0.0f, alpha - std::fabs(distribution(generator)));
             std::cout << "perturbed alpha: " << alpha << std::endl;
         }
+    }
+
+    if (parser.cmdOptionExists("tex")) {
+        texture_image = parser.getCmdOption("tex");
+        std::cout << "using texture " << texture_image << std::endl;
     }
 
     // Read Depth image
