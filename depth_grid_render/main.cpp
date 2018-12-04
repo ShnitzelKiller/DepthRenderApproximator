@@ -263,6 +263,22 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (parser.cmdOptionExists("save")) {
+        const std::string param_path = parser.getCmdOption("save");
+        std::ofstream paramof(param_path);
+        paramof << "random angle: " << std::endl;
+        paramof << random_angle << std::endl;
+        paramof << "random axis: " << std::endl;
+        paramof << random_axis << std::endl;
+        paramof << "random angle (light): " << std::endl;
+        paramof << random_angle_light << std::endl;
+        paramof << "random axis (light): " << std::endl;
+        paramof << random_axis_light << std::endl;
+        paramof << "perturbed alpha: " << std::endl;
+        paramof << alpha << std::endl;
+        paramof.close();
+    }
+
     if (parser.cmdOptionExists("tex")) {
         texture_image = parser.getCmdOption("tex");
         std::cout << "using texture " << texture_image << std::endl;
