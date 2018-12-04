@@ -134,7 +134,7 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
         scene->AddChild(integrator);
     } else if (mode == directDiffuse || mode == directSpec) {
         auto integrator = make_shared<XMLElement>("integrator", "path");
-        integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "1"));
+        integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "2"));
         scene->AddChild(integrator);
     }
     
