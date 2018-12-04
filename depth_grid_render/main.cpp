@@ -11,12 +11,12 @@
 #include <math.h>
 #include <limits>
 
-#define NUM_SCENES 7
+#define NUM_SCENES 11
 
-enum SceneMode {normal, flip, specular};
+enum SceneMode {normal, flip, specular, directDiffuse, directSpec};
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>] [-scenes (1|0){7}]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>] [-scenes (1|0){11}]" << std::endl;
 }
 
 std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal) {
@@ -86,8 +86,10 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
       plane->AddChild(plane_trans);
       auto plane_bsdf = make_shared<XMLElement>("bsdf", "roughplastic");
       plane_bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
-      if (mode == specular) {
+      if (mode == specular || mode == directSpec) {
           plane_bsdf->AddChild(make_shared<XMLElement>("spectrum", "diffuseReflectance", "0")); //disable diffuse component for rendering reflection image
+      } else if (mode == directDiffuse) {
+          plane_bsdf->AddChild(make_shared<XMLElement>("spectrum", "specularReflectance", "0")); //disable specular component for rendering diffuse image
       }
       plane->AddChild(plane_bsdf);
       scene->AddChild(plane);
@@ -124,11 +126,15 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
         //also remove the emitters if we do that?
     } else if (mode == specular) {
         auto integrator = make_shared<XMLElement>("integrator", "path");
-        integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "3"));
+        integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "2"));
         scene->AddChild(integrator);
     } else if (mode == normal) {
         auto integrator = make_shared<XMLElement>("integrator", "path");
         integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "3"));
+        scene->AddChild(integrator);
+    } else if (mode == directDiffuse || mode == directSpec) {
+        auto integrator = make_shared<XMLElement>("integrator", "path");
+        integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "1"));
         scene->AddChild(integrator);
     }
     
@@ -151,14 +157,7 @@ int main(int argc, char** argv) {
     const std::string plane_mask_path = "planemask.png";
     const std::string mesh_path = "output_mesh.obj";
     const std::string meshwo_path = "output_meshwo.obj";
-    const std::string meshobj_path = "output_meshobj.obj";
-    const std::string scene_path = "scene_gen.xml";
-    const std::string textured_scene_path = "scene_gen_tex.xml";
-    const std::string textured_scenewo_path = "scenewo_gen_tex.xml";
-    const std::string flipped_scene_path = "scene_gen_flipped.xml";
-    const std::string flipped_scenewo_path = "scenewo_gen_flipped.xml";
-    const std::string spec_sceneobj_path = "sceneobj_gen_spec.xml";
-    const std::string spec_scenewo_path = "scenewo_gen_spec.xml";
+    //const std::string meshobj_path = "output_meshobj.obj";
     
     float scale_factor = 0.5;
     const float floorEps = 5e-2;
@@ -307,7 +306,7 @@ int main(int argc, char** argv) {
 
     OBJMesh<float> mesh = createMesh(resampled_depth_img, min_depth, max_depth, occlusion_threshold, correction_factor);
     OBJMesh<float> meshwo = createMesh(depthwo_img, min_depth, max_depth, occlusion_threshold, correction_factor);
-    OBJMesh<float> meshobj = createMesh(mask_img, min_depth, max_depth, occlusion_threshold, correction_factor);
+    //OBJMesh<float> meshobj = createMesh(mask_img, min_depth, max_depth, occlusion_threshold, correction_factor);
 
     std::cout << "finished creating mesh " << std::endl;
 
@@ -328,7 +327,7 @@ int main(int argc, char** argv) {
 
     mesh.Transform(camToWorld);
     meshwo.Transform(camToWorld);
-    meshobj.Transform(camToWorld);
+    //meshobj.Transform(camToWorld);
 
     const size_t n = mesh.GetNumVertices();
     for (int i=1; i<=n; i++) {
@@ -343,7 +342,7 @@ int main(int argc, char** argv) {
     const size_t oldSize = mesh.GetNumElements();
     mesh.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
     meshwo.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
-    meshobj.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
+    //meshobj.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
     const size_t newSize = mesh.GetNumElements();
     std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
     if (output_masks) {
@@ -359,10 +358,10 @@ int main(int argc, char** argv) {
     meshwo.SaveOBJ(ofwo);
     ofwo.close();
     std::cout << "saved (wo) mesh at " << meshwo_path << std::endl;
-    std::ofstream ofobj(meshobj_path);
+    /*std::ofstream ofobj(meshobj_path);
     meshobj.SaveOBJ(ofobj);
     ofobj.close();
-    std::cout << "saved (obj) mesh at " << meshobj_path << std::endl;
+    std::cout << "saved (obj) mesh at " << meshobj_path << std::endl; */
 
     const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
     const float lightX = light_radius * cos(light_theta) * cos(light_phi);
@@ -370,6 +369,7 @@ int main(int argc, char** argv) {
 
     std::cout << "saving scenes according to mask " << scene_mask << ": " << std::endl;
     if (scene_mask[0] != '0') {
+        const std::string scene_path = "scene_gen.xml";
         auto scene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                 light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
                                 random_angle, random_axis_light, random_angle_light);
@@ -380,6 +380,7 @@ int main(int argc, char** argv) {
     }
 
     if (scene_mask[1] != '0') {
+        const std::string textured_scene_path = "scene_gen_tex.xml";
         auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                    light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, texture_image,
                                    random_axis, random_angle, random_axis_light, random_angle_light);
@@ -390,6 +391,7 @@ int main(int argc, char** argv) {
     }
 
     if (scene_mask[2] != '0') {
+        const std::string textured_scenewo_path = "scenewo_gen_tex.xml";
         auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                   light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, texture_image,
                                   random_axis, random_angle, random_axis_light, random_angle_light);
@@ -400,6 +402,7 @@ int main(int argc, char** argv) {
     }
 
     if (scene_mask[3] != '0') {
+        const std::string flipped_scene_path = "scene_gen_flipped.xml";
         auto flippedscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
                                        scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "",
                                        random_axis, random_angle, random_axis_light, random_angle_light, flip);
@@ -410,6 +413,7 @@ int main(int argc, char** argv) {
     }
 
     if (scene_mask[4] != '0') {
+        const std::string flipped_scenewo_path = "scenewo_gen_flipped.xml";
         auto flippedwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
                                          scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path,
                                          "", random_axis, random_angle, random_axis_light, random_angle_light,
@@ -421,17 +425,19 @@ int main(int argc, char** argv) {
     }
 
     if (scene_mask[5] != '0') {
-        auto specobjscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
-                                       scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshobj_path,
+        const std::string spec_scene_path = "sceneobj_gen_spec.xml";
+        auto specscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
+                                       scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path,
                                        "", random_axis, random_angle, random_axis_light, random_angle_light,
                                        specular);
-        std::ofstream specsceneobjof(spec_sceneobj_path);
-        specobjscene->SaveXML(specsceneobjof);
-        specsceneobjof.close();
-        std::cout << spec_sceneobj_path << std::endl;
+        std::ofstream specsceneof(spec_scene_path);
+        specscene->SaveXML(specsceneof);
+        specsceneof.close();
+        std::cout << spec_scene_path << std::endl;
     }
 
     if (scene_mask[6] != '0') {
+        const std::string spec_scenewo_path = "scenewo_gen_spec.xml";
         auto specwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                       light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
                                       random_angle, random_axis_light, random_angle_light, specular);
@@ -439,6 +445,50 @@ int main(int argc, char** argv) {
         specwoscene->SaveXML(specscenewoof);
         specscenewoof.close();
         std::cout << spec_scenewo_path << std::endl;
+    }
+
+    if (scene_mask[7] != '0') {
+        const std::string directspec_scene_path = "scene_gen_directspec.xml";
+        auto directspecscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+                                      light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
+                                      random_angle, random_axis_light, random_angle_light, directSpec);
+        std::ofstream directspecsceneof(directspec_scene_path);
+        directspecscene->SaveXML(directspecsceneof);
+        directspecsceneof.close();
+        std::cout << directspec_scene_path << std::endl;
+    }
+
+    if (scene_mask[8] != '0') {
+        const std::string directspec_scenewo_path = "scenewo_gen_directspec.xml";
+        auto directspecwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+                                          light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
+                                          random_angle, random_axis_light, random_angle_light, directSpec);
+        std::ofstream directspecscenewoof(directspec_scenewo_path);
+        directspecwoscene->SaveXML(directspecscenewoof);
+        directspecscenewoof.close();
+        std::cout << directspec_scenewo_path << std::endl;
+    }
+
+    if (scene_mask[9] != '0') {
+        const std::string directdiffuse_scene_path = "scene_gen_directdiffuse.xml";
+        auto directdiffusescene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+                                          light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
+                                          random_angle, random_axis_light, random_angle_light, directDiffuse);
+        std::ofstream directdiffusesceneof(directdiffuse_scene_path);
+        directdiffusescene->SaveXML(directdiffusesceneof);
+        directdiffusesceneof.close();
+        std::cout << directdiffuse_scene_path << std::endl;
+    }
+
+    if (scene_mask[10] != '0') {
+        const std::string directdiffuse_scenewo_path = "scenewo_gen_directdiffuse.xml";
+        auto directdiffusewoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+                                            light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
+                                            random_angle, random_axis_light, random_angle_light, directDiffuse);
+        std::ofstream directdiffusescenewoof(directdiffuse_scenewo_path);
+        directdiffusewoscene->SaveXML(directdiffusescenewoof);
+        directdiffusescenewoof.close();
+        std::cout << directdiffuse_scenewo_path << std::endl;
     }
     return 0;
 }
