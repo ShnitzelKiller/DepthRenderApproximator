@@ -7,12 +7,36 @@ quotient_cmd=/projects/grail/jamesn8/projects/DepthRenderApproximator/quotient_i
 
 datadir=/local1/edzhang/dataset
 hdrdir=/local1/edzhang/HDRMaps
-outdir=/projects/grail/jamesn8/projects/DepthRenderApproximator/output/full
+outdir=/projects/grail/jamesn8/projects/DepthRenderApproximator/output/full-randomized-augmented
 
 masksuffix=_OBJ
 depthsuffix=_ALL
 outputsuffix=_ALL
 outputwosuffix=_WO
+outputspecsuffix=_SPEC
+outputwospecsuffix=_WOSPEC
+outputdirectspecsuffix=_DSPEC
+outputwodirectspecsuffix=_WODSPEC
+outputdirectdiffusesuffix=_DDIFF
+outputwodirectdiffusesuffix=_WODDIFF
+texsuffix=_TEX
+paramsuffix=_PARAM
+
+#### EDIT THESE TO CHANGE OUTPUTS ####
+
+render_base=0
+render_tex=0
+render_wotex=0
+render_flipped=0
+render_woflipped=0
+render_spec=1
+render_wospec=1
+render_directspec=1
+render_wodirectspec=1
+render_directdiffuse=1
+render_wodirectdiffuse=1
+
+######################################
 
 cd $hdrdir
 allenvmaps=$(ls)
@@ -40,11 +64,20 @@ for filename in ${datadir}/*_Y.exr; do
 	rm *.obj
     fi
     filename=${filename##*/}
-    outfilew=$outdir/${filename%%_Y.exr}${outputsuffix}.exr
-    outfilewo=$outdir/${filename%%_Y.exr}${outputwosuffix}.exr
+    namebase=${filename%%_Y.exr}
+    outfilew=$outdir/${namebase}${outputsuffix}.exr
+    outfilewo=$outdir/${namebase}${outputwosuffix}.exr
+    outfilespec=$outdir/${namebase}${outputspecsuffix}.exr
+    outfilewospec=$outdir/${namebase}${outputwospecsuffix}.exr
+    outfiledirectspec=$outdir/${namebase}${outputdirectspecsuffix}.exr
+    outfilewodirectspec=$outdir/${namebase}${outputwodirectspecsuffix}.exr
+    outfiledirectdiffuse=$outdir/${namebase}${outputdirectdiffusesuffix}.exr
+    outfilewodirectdiffuse=$outdir/${namebase}${outputwodirectdiffusesuffix}.exr
+    outtex=$outdir/${namebase}${texsuffix}.exr
+    outparam=$outdir/${namebase}${paramsuffix}.txt
     if [ -f $outfilew ]
     then
-	echo $outfilew already detected, skipping
+	echo $outfilew already detected, skipping #TODO: Render only relevant missing outputs, but don't skip
 	continue
     fi
 
@@ -114,14 +147,28 @@ for filename in ${datadir}/*_Y.exr; do
     alpha=$(echo $params | cut -d'_' -f 5)
     echo alpha: $alpha
 
-    $render_cmd $datadir/$depth_map $hdrdir/$env_map $theta $phi $alpha $datadir/$mask_map -ltheta $light_theta -lphi $light_phi -output_masks
+    $render_cmd $datadir/$depth_map $hdrdir/$env_map $theta $phi $alpha $datadir/$mask_map -tex $outtex -ltheta $light_theta -lphi $light_phi -randalpha 0.01 -randang 5 -save $outparam -output_masks 1 #-scenes ${render_base}${render_tex}${render_wotex}${render_flipped}${render_woflipped}${render_spec}${render_wospec}${render_directspec}${render_wodirectspec}${render_directdiffuse}${render_wodirectdiffuse}
+
+    #TODO: properly detect what renders to run based on the mask! also see above scenes argument
     echo "Render lighting image"
     mitsuba scene_gen.xml -o $tmpfile -p $maxcpus
     echo "Compute diffuse reflectance"
-    $quotient_cmd $datadir/$filename $tmpfile texture.exr
+    $quotient_cmd $datadir/$filename $tmpfile $outtex
     echo "Render full image"
     mitsuba scene_gen_tex.xml -o $outfilew -p $maxcpus
     echo "Render full image without object"
     mitsuba scenewo_gen_tex.xml -o $outfilewo -p $maxcpus
-    #exit #remove when this actually works
+    echo "Render specular map"
+    mitsuba scene_gen_spec.xml -o $outfilespec -p $maxcpus
+    echo "Render specular map without object"
+    mitsuba scenewo_gen_spec.xml -o $outfilewospec -p $maxcpus
+    echo "Render direct diffuse"
+    mitsuba scene_gen_directdiffuse.xml -o $outfiledirectdiffuse -p $maxcpus
+    echo "Render direct diffuse without object"
+    mitsuba scenewo_gen_directdiffuse.xml -o $outfilewodirectdiffuse -p $maxcpus
+    echo "Render direct specular"
+    mitsuba scene_gen_directspec.xml -o $outfiledirectspec -p $maxcpus
+    echo "Render direct specular without object"
+    mitsuba scenewo_gen_directspec.xml -o $outfilewodirectspec -p $maxcpus
+    exit #remove when this actually works
 done
