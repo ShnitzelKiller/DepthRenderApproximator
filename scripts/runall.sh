@@ -22,7 +22,7 @@ outputwodirectdiffusesuffix=_WODDIFF
 texsuffix=_TEX
 paramsuffix=_PARAM
 
-#### EDIT THESE TO CHANGE OUTPUTS ####
+#### TODO: EDIT THESE TO CHANGE OUTPUTS (CURRENTLY UNUSED) ####
 
 render_base=0
 render_tex=0
@@ -170,5 +170,5 @@ for filename in ${datadir}/*_Y.exr; do
     mitsuba scene_gen_directspec.xml -o $outfiledirectspec -p $maxcpus
     echo "Render direct specular without object"
     mitsuba scenewo_gen_directspec.xml -o $outfilewodirectspec -p $maxcpus
-    exit #remove when this actually works
+    #exit #remove when this actually works
 done
