@@ -10,13 +10,14 @@
 #include "MeshBuilder.hpp"
 #include <math.h>
 #include <limits>
+#include <string>
 
 #define NUM_SCENES 11
 
 enum SceneMode {normal, flip, specular, directDiffuse, directSpec};
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>] [-scenes (1|0){11}]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>] [-scenes (1|0){11}] [-save <name>]" << std::endl;
 }
 
 std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal) {
@@ -149,12 +150,9 @@ int main(int argc, char** argv) {
     std::string envmap;
     const float correction_factor = 8.0f/8.72551f; //hand measured error factor
     
-    const std::string object_mask_path = "objectmask.png";
+    std::string object_mask_path = "objectmask.png";
     const std::string plane_mask_path = "planemask.png";
-    const std::string mesh_path = "output_mesh.obj";
-    const std::string meshwo_path = "output_meshwo.obj";
-    //const std::string meshobj_path = "output_meshobj.obj";
-    
+
     float scale_factor = 0.5;
     const float floorEps = 5e-2;
     const float floor_normal_angle_range = 60;
@@ -175,6 +173,8 @@ int main(int argc, char** argv) {
     float random_angle = 0;
     Eigen::Vector3f random_axis_light;
     float random_angle_light = 0;
+    bool randomness_alpha = false;
+    bool randomness_angle = false;
     bool light = false;
     std::string scene_version("0.6.0");
     std::string scene_mask;
@@ -249,6 +249,7 @@ int main(int argc, char** argv) {
             geom::randomAngleAxis(angle_random_magnitude, random_axis_light, random_angle_light);
             std::cout << "random axis2: " << std::endl << random_axis_light << std::endl;
             std::cout << "random angle2: " << random_angle_light << std::endl;
+            randomness_angle = true;
         }
     }
 
@@ -261,22 +262,55 @@ int main(int argc, char** argv) {
             alpha = std::max(0.0f, alpha - std::fabs(distribution(generator)));
             std::cout << "perturbed alpha: " << alpha << std::endl;
         }
+        randomness_alpha = true;
     }
 
+    std::string basename;
+    std::string mesh_path = "output_mesh.obj";
+    std::string meshwo_path = "output_meshwo.obj";
+    //const std::string meshobj_path = "output_meshobj.obj";
+    std::string filenames[] = {"scene_gen.xml",
+                               "scene_gen_tex.xml",
+                               "scenewo_gen_tex.xml",
+                               "scene_gen_flipped.xml",
+                               "scenewo_gen_flipped.xml",
+                               "scene_gen_spec.xml",
+                               "scenewo_gen_spec.xml",
+                               "scene_gen_directspec.xml",
+                               "scenewo_gen_directspec.xml",
+                               "scene_gen_directdiffuse.xml",
+                               "scenewo_gen_directdiffuse.xml"};
+
     if (parser.cmdOptionExists("save")) {
-        const std::string param_path = parser.getCmdOption("save");
-        std::ofstream paramof(param_path);
-        paramof << "random angle: " << std::endl;
-        paramof << random_angle << std::endl;
-        paramof << "random axis: " << std::endl;
-        paramof << random_axis << std::endl;
-        paramof << "random angle (light): " << std::endl;
-        paramof << random_angle_light << std::endl;
-        paramof << "random axis (light): " << std::endl;
-        paramof << random_axis_light << std::endl;
-        paramof << "perturbed alpha: " << std::endl;
-        paramof << alpha << std::endl;
-        paramof.close();
+        basename = parser.getCmdOption("save");
+
+        basename.push_back('_');
+        for (int i=0; i<NUM_SCENES; i++) {
+            filenames[i].insert(0, basename);
+        }
+
+        mesh_path.insert(0, basename);
+        meshwo_path.insert(0, basename);
+        object_mask_path.insert(0, basename);
+
+        if (randomness_alpha || randomness_angle) {
+            std::ofstream paramof(basename + "PARAM.txt");
+            if (randomness_angle) {
+                paramof << "random angle: " << std::endl;
+                paramof << random_angle << std::endl;
+                paramof << "random axis: " << std::endl;
+                paramof << random_axis << std::endl;
+                paramof << "random angle (light): " << std::endl;
+                paramof << random_angle_light << std::endl;
+                paramof << "random axis (light): " << std::endl;
+                paramof << random_axis_light << std::endl;
+            }
+            if (randomness_alpha) {
+                paramof << "perturbed alpha: " << std::endl;
+                paramof << alpha << std::endl;
+            }
+            paramof.close();
+        }
     }
 
     if (parser.cmdOptionExists("tex")) {
@@ -385,127 +419,127 @@ int main(int argc, char** argv) {
     const float lightY = light_radius * sin(light_phi);
 
     std::cout << "saving scenes according to mask " << scene_mask << ": " << std::endl;
+
     if (scene_mask[0] != '0') {
-        const std::string scene_path = "scene_gen.xml";
+
         auto scene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                 light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
                                 random_angle, random_axis_light, random_angle_light);
-        std::ofstream sceneof(scene_path);
+        std::ofstream sceneof(filenames[0]);
         scene->SaveXML(sceneof);
         sceneof.close();
-        std::cout << scene_path << std::endl;
+        std::cout << filenames[0] << std::endl;
     }
 
     if (scene_mask[1] != '0') {
-        const std::string textured_scene_path = "scene_gen_tex.xml";
+
         auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                    light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, texture_image,
                                    random_axis, random_angle, random_axis_light, random_angle_light);
-        std::ofstream texsceneof(textured_scene_path);
+        std::ofstream texsceneof(filenames[1]);
         texscene->SaveXML(texsceneof);
         texsceneof.close();
-        std::cout << textured_scene_path << std::endl;
+        std::cout << filenames[1] << std::endl;
     }
 
     if (scene_mask[2] != '0') {
-        const std::string textured_scenewo_path = "scenewo_gen_tex.xml";
+
         auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                   light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, texture_image,
                                   random_axis, random_angle, random_axis_light, random_angle_light);
-        std::ofstream texscenewoof(textured_scenewo_path);
+        std::ofstream texscenewoof(filenames[2]);
         woscene->SaveXML(texscenewoof);
         texscenewoof.close();
-        std::cout << textured_scenewo_path << std::endl;
+        std::cout << filenames[2] << std::endl;
     }
 
     if (scene_mask[3] != '0') {
-        const std::string flipped_scene_path = "scene_gen_flipped.xml";
+
         auto flippedscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
                                        scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "",
                                        random_axis, random_angle, random_axis_light, random_angle_light, flip);
-        std::ofstream flippedsceneof(flipped_scene_path);
+        std::ofstream flippedsceneof(filenames[3]);
         flippedscene->SaveXML(flippedsceneof);
         flippedsceneof.close();
-        std::cout << flipped_scene_path << std::endl;
+        std::cout << filenames[3] << std::endl;
     }
 
     if (scene_mask[4] != '0') {
-        const std::string flipped_scenewo_path = "scenewo_gen_flipped.xml";
+
         auto flippedwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
                                          scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path,
                                          "", random_axis, random_angle, random_axis_light, random_angle_light,
                                          flip);
-        std::ofstream flippedscenewoof(flipped_scenewo_path);
+        std::ofstream flippedscenewoof(filenames[4]);
         flippedwoscene->SaveXML(flippedscenewoof);
         flippedscenewoof.close();
-        std::cout << flipped_scenewo_path << std::endl;
+        std::cout << filenames[4] << std::endl;
     }
 
     if (scene_mask[5] != '0') {
-        const std::string spec_scene_path = "scene_gen_spec.xml";
+
         auto specscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
                                        scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path,
                                        "", random_axis, random_angle, random_axis_light, random_angle_light,
                                        specular);
-        std::ofstream specsceneof(spec_scene_path);
+        std::ofstream specsceneof(filenames[5]);
         specscene->SaveXML(specsceneof);
         specsceneof.close();
-        std::cout << spec_scene_path << std::endl;
+        std::cout << filenames[5] << std::endl;
     }
 
     if (scene_mask[6] != '0') {
-        const std::string spec_scenewo_path = "scenewo_gen_spec.xml";
+
         auto specwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                       light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
                                       random_angle, random_axis_light, random_angle_light, specular);
-        std::ofstream specscenewoof(spec_scenewo_path);
+        std::ofstream specscenewoof(filenames[6]);
         specwoscene->SaveXML(specscenewoof);
         specscenewoof.close();
-        std::cout << spec_scenewo_path << std::endl;
+        std::cout << filenames[6] << std::endl;
     }
 
     if (scene_mask[7] != '0') {
-        const std::string directspec_scene_path = "scene_gen_directspec.xml";
+
         auto directspecscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                       light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
                                       random_angle, random_axis_light, random_angle_light, directSpec);
-        std::ofstream directspecsceneof(directspec_scene_path);
+        std::ofstream directspecsceneof(filenames[7]);
         directspecscene->SaveXML(directspecsceneof);
         directspecsceneof.close();
-        std::cout << directspec_scene_path << std::endl;
+        std::cout << filenames[7] << std::endl;
     }
 
     if (scene_mask[8] != '0') {
-        const std::string directspec_scenewo_path = "scenewo_gen_directspec.xml";
+
         auto directspecwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                           light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
                                           random_angle, random_axis_light, random_angle_light, directSpec);
-        std::ofstream directspecscenewoof(directspec_scenewo_path);
+        std::ofstream directspecscenewoof(filenames[8]);
         directspecwoscene->SaveXML(directspecscenewoof);
         directspecscenewoof.close();
-        std::cout << directspec_scenewo_path << std::endl;
+        std::cout << filenames[8] << std::endl;
     }
 
     if (scene_mask[9] != '0') {
-        const std::string directdiffuse_scene_path = "scene_gen_directdiffuse.xml";
+
         auto directdiffusescene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                           light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
                                           random_angle, random_axis_light, random_angle_light, directDiffuse);
-        std::ofstream directdiffusesceneof(directdiffuse_scene_path);
+        std::ofstream directdiffusesceneof(filenames[9]);
         directdiffusescene->SaveXML(directdiffusesceneof);
         directdiffusesceneof.close();
-        std::cout << directdiffuse_scene_path << std::endl;
+        std::cout << filenames[9] << std::endl;
     }
 
     if (scene_mask[10] != '0') {
-        const std::string directdiffuse_scenewo_path = "scenewo_gen_directdiffuse.xml";
         auto directdiffusewoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                             light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
                                             random_angle, random_axis_light, random_angle_light, directDiffuse);
-        std::ofstream directdiffusescenewoof(directdiffuse_scenewo_path);
+        std::ofstream directdiffusescenewoof(filenames[10]);
         directdiffusewoscene->SaveXML(directdiffusescenewoof);
         directdiffusescenewoof.close();
-        std::cout << directdiffuse_scenewo_path << std::endl;
+        std::cout << filenames[10] << std::endl;
     }
     return 0;
 }
