@@ -74,7 +74,6 @@ for filename in ${datadir}/*_Y.exr; do
     outfiledirectdiffuse=$outdir/${namebase}${outputdirectdiffusesuffix}.exr
     outfilewodirectdiffuse=$outdir/${namebase}${outputwodirectdiffusesuffix}.exr
     outtex=$outdir/${namebase}${texsuffix}.exr
-    outparam=$outdir/${namebase}${paramsuffix}.txt
     if [ -f $outfilew ]
     then
 	echo $outfilew already detected, skipping #TODO: Render only relevant missing outputs, but don't skip
@@ -147,7 +146,7 @@ for filename in ${datadir}/*_Y.exr; do
     alpha=$(echo $params | cut -d'_' -f 5)
     echo alpha: $alpha
 
-    $render_cmd $datadir/$depth_map $hdrdir/$env_map $theta $phi $alpha $datadir/$mask_map -tex $outtex -ltheta $light_theta -lphi $light_phi -randalpha 0.01 -randang 5 -save $outparam -output_masks 1 #-scenes ${render_base}${render_tex}${render_wotex}${render_flipped}${render_woflipped}${render_spec}${render_wospec}${render_directspec}${render_wodirectspec}${render_directdiffuse}${render_wodirectdiffuse}
+    $render_cmd $datadir/$depth_map $hdrdir/$env_map $theta $phi $alpha $datadir/$mask_map -tex $outtex -ltheta $light_theta -lphi $light_phi -randalpha 0.01 -randang 5 -save $tag -output_masks 1 #-scenes ${render_base}${render_tex}${render_wotex}${render_flipped}${render_woflipped}${render_spec}${render_wospec}${render_directspec}${render_wodirectspec}${render_directdiffuse}${render_wodirectdiffuse}
 
     #TODO: properly detect what renders to run based on the mask! also see above scenes argument
     echo "Render lighting image"
