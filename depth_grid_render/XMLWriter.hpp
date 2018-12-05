@@ -88,7 +88,7 @@ public:
         if (y != 0)
             trans->AddProperty("y", std::to_string(y));
         if (z != 0)
-            trans->AddProperty("z", std::to_string(y));
+            trans->AddProperty("z", std::to_string(z));
         return trans;
     }
 
@@ -103,7 +103,7 @@ public:
         if (y != 1)
             trans->AddProperty("y", std::to_string(y));
         if (z != 1)
-            trans->AddProperty("z", std::to_string(y));
+            trans->AddProperty("z", std::to_string(z));
         return trans;
     }
 
