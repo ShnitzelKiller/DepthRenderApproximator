@@ -125,7 +125,7 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     if (mode == flip) {
         //TODO: world Y position integrator or some visualization that captures the reflected geometry
         //also remove the emitters if we do that?
-    } else if (mode == specular || mode == directSpec || directDiffuse) {
+    } else if (mode == specular || mode == directSpec || mode == directDiffuse) {
         auto integrator = make_shared<XMLElement>("integrator", "path");
         integrator->AddChild(make_shared<XMLElement>("integer", "maxDepth", "2"));
         scene->AddChild(integrator);
