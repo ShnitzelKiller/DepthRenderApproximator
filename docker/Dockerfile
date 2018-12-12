@@ -9,4 +9,3 @@ RUN cd /root/opencv/build && make install
 RUN cd /root && git clone https://github.com/mitsuba-renderer/mitsuba.git
 RUN cp /root/mitsuba/build/config-linux-gcc.py /root/mitsuba/config.py
 RUN cd /root/mitsuba && scons
-COPY build_depthgrid.sh /root/
