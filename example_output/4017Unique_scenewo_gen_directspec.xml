@@ -1,24 +1,24 @@
-<scene version="0.5.0">
+<scene version="0.6.0">
  <shape type="rectangle">
   <transform name="toWorld">
    <scale x="8" y="8"/>
    <rotate angle="-90" x="1"/>
   </transform>
   <bsdf type="roughplastic">
-   <float name="alpha" value="0.027787"/>
+   <float name="alpha" value="0.026822"/>
    <spectrum name="diffuseReflectance" value="0"/>
   </bsdf>
  </shape>
  <emitter type="envmap">
   <string name="filename" value="../../data/hdr_maps/canada_montreal_nad_photorealism.exr"/>
   <transform name="toWorld">
-   <rotate angle="1.221343" x="0.345793" y="-0.046459" z="0.937160"/>
+   <rotate angle="1.317778" x="0.948468" y="-0.266974" z="0.170686"/>
   </transform>
  </emitter>
  <emitter type="point">
   <transform name="toWorld">
    <translate x="-5.257895" y="44.098503" z="27.049519"/>
-   <rotate angle="-1.202454" x="-0.676614" y="0.116499" z="0.727064"/>
+   <rotate angle="1.828222" x="0.049439" y="-0.373284" z="0.926399"/>
   </transform>
   <spectrum name="intensity" value="400"/>
  </emitter>
