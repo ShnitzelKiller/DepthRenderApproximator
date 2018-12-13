@@ -1,0 +1,14 @@
+random angle: 
+1.22134
+random axis: 
+  0.345793
+-0.0464594
+   0.93716
+random angle (light): 
+-1.20245
+random axis (light): 
+-0.676614
+ 0.116499
+ 0.727064
+perturbed alpha: 
+0.0277866
