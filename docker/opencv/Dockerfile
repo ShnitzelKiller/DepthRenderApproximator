@@ -6,6 +6,4 @@ RUN cd /root && git clone --single-branch -b 3.4 https://github.com/opencv/openc
 RUN cd /root/opencv && mkdir build && cd build && cmake ..
 RUN cd /root/opencv/build && make
 RUN cd /root/opencv/build && make install
-RUN cd /root && git clone https://github.com/kyzyx/mitsuba.git
-RUN cp /root/mitsuba/build/config-linux-gcc.py /root/mitsuba/config.py
-RUN cd /root/mitsuba && scons
+
