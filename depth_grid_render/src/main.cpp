@@ -12,15 +12,15 @@
 #include <limits>
 #include <string>
 
-#define NUM_SCENES 11
+#define NUM_SCENES 12
 
-enum SceneMode {normal, flip, specular, directDiffuse, directSpec};
+enum SceneMode {normal, flip, specular, directDiffuse, directSpec, texture_only};
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>] [-scenes (1|0){11}] [-save <name>]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>] [-scenes (1|0){12}] [-save <name>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal) {
+std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal, std::string planeTexture="") {
     using namespace std;
     ostringstream eye;
     eye << camOrigin[0] << ", " << camOrigin[1] << ", " << camOrigin[2];
@@ -46,36 +46,40 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     cam_trans->AddChild(look_at);
     camera->AddChild(cam_trans);
 
-    auto shape = make_shared<XMLElement>("shape", "obj");
-    shape->AddChild(make_shared<XMLElement>("string", "filename", meshPath));
-    if (mode == normal) {
-        auto bsdf = make_shared<XMLElement>("bsdf", "diffuse");
-        bsdf->AddChild(make_shared<XMLElement>("spectrum", "reflectance", "1"));
-        if (!meshTexture.empty()) {
-            auto texture = make_shared<XMLElement>("texture", "bitmap");
-            texture->AddProperty("name", "diffuseReflectance");
-            texture->AddChild(make_shared<XMLElement>("string", "filename", meshTexture));
-            bsdf->AddChild(texture);
+    if (mode != texture_only) {
+        auto shape = make_shared<XMLElement>("shape", "obj");
+        shape->AddChild(make_shared<XMLElement>("string", "filename", meshPath));
+        if (mode == normal) {
+            auto bsdf = make_shared<XMLElement>("bsdf", "diffuse");
+            bsdf->AddChild(make_shared<XMLElement>("spectrum", "reflectance", "1"));
+            if (!meshTexture.empty()) {
+                auto texture = make_shared<XMLElement>("texture", "bitmap");
+                texture->AddProperty("name", "diffuseReflectance");
+                texture->AddChild(make_shared<XMLElement>("string", "filename", meshTexture));
+                bsdf->AddChild(texture);
+            }
+            shape->AddChild(bsdf);
+        } else if (mode == specular) {
+            auto area_emitter = make_shared<XMLElement>("emitter", "area");
+            area_emitter->AddChild(make_shared<XMLElement>("spectrum", "radiance", "1"));
+            shape->AddChild(area_emitter);
         }
-        shape->AddChild(bsdf);
-    } else if (mode == specular) {
-        auto area_emitter = make_shared<XMLElement>("emitter", "area");
-        area_emitter->AddChild(make_shared<XMLElement>("spectrum", "radiance", "1"));
-        shape->AddChild(area_emitter);
-    }
 
-    auto shape_transform = XMLElement::Transform("toWorld");
-    if (mode != specular) {
-        //only correct if not emissive to workaround error?
-        auto shape_translate = XMLElement::Translation(0.0f, -plane_height, 0.0f);
-        shape_transform->AddChild(shape_translate);
+        auto shape_transform = XMLElement::Transform("toWorld");
+        if (mode != specular) {
+            //only correct if not emissive to workaround error?
+            auto shape_translate = XMLElement::Translation(0.0f, -plane_height, 0.0f);
+            shape_transform->AddChild(shape_translate);
+        }
+        if (mode == flip) {
+            auto shape_scale = XMLElement::Scale(1, -1, 1);
+            shape_transform->AddChild(shape_scale);
+            shape->AddChild(make_shared<XMLElement>("boolean", "flipNormals", "true"));
+        }
+        shape->AddChild(shape_transform);
+        scene->AddChild(shape);
+
     }
-    if (mode == flip) {
-      auto shape_scale = XMLElement::Scale(1, -1, 1);
-      shape_transform->AddChild(shape_scale);
-      shape->AddChild(make_shared<XMLElement>("boolean", "flipNormals", "true"));
-    }
-    shape->AddChild(shape_transform);
 
     if (mode != flip) {
       auto plane = make_shared<XMLElement>("shape", "rectangle");
@@ -85,18 +89,35 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
       plane_trans->AddChild(plane_scale);
       plane_trans->AddChild(plane_rotate);
       plane->AddChild(plane_trans);
-      auto plane_bsdf = make_shared<XMLElement>("bsdf", "roughplastic");
-      plane_bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
-      if (mode == specular || mode == directSpec) {
-          plane_bsdf->AddChild(make_shared<XMLElement>("spectrum", "diffuseReflectance", "0")); //disable diffuse component for rendering reflection image
-      } else if (mode == directDiffuse) {
-          plane_bsdf->AddChild(make_shared<XMLElement>("spectrum", "specularReflectance", "0")); //disable specular component for rendering diffuse image
+
+      if (mode == texture_only) {
+          //TODO: load actual texture for plane
+          auto plane_bsdf = make_shared<XMLElement>("bsdf", "diffuse");
+          //area_emitter->AddChild(make_shared<XMLElement>("spectrum", "radiance", "1"));
+          auto texture = make_shared<XMLElement>("texture", "bitmap");
+          texture->AddProperty("name", "reflectance");
+          texture->AddChild(make_shared<XMLElement>("string", "filename", planeTexture));
+          plane_bsdf->AddChild(texture);
+          plane->AddChild(plane_bsdf);
+          auto constant_emitter = make_shared<XMLElement>("emitter", "constant");
+          constant_emitter->AddChild(make_shared<XMLElement>("spectrum", "radiance", "1"));
+          scene->AddChild(constant_emitter);
+      } else {
+          auto plane_bsdf = make_shared<XMLElement>("bsdf", "roughplastic");
+          plane_bsdf->AddChild(make_shared<XMLElement>("float", "alpha", to_string(alpha)));
+          if (mode == specular || mode == directSpec) {
+              plane_bsdf->AddChild(make_shared<XMLElement>("spectrum", "diffuseReflectance",
+                                                           "0")); //disable diffuse component for rendering reflection image
+          } else if (mode == directDiffuse) {
+              plane_bsdf->AddChild(make_shared<XMLElement>("spectrum", "specularReflectance",
+                                                           "0")); //disable specular component for rendering diffuse image
+          }
+          plane->AddChild(plane_bsdf);
       }
-      plane->AddChild(plane_bsdf);
       scene->AddChild(plane);
     }
 
-    if (mode != specular) {
+    if (mode != specular && mode != texture_only) {
         auto emitter = make_shared<XMLElement>("emitter", "envmap");
         emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
         if (random_angle != 0) {
@@ -137,7 +158,6 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     
 
     scene->AddChild(camera);
-    scene->AddChild(shape);
 
     return scene;
 }
@@ -157,9 +177,10 @@ int main(int argc, char** argv) {
     const float floorEps = 5e-2;
     const float floor_normal_angle_range = 60;
     std::string texture_image = "texture.exr";
+    std::string plane_texture = "placeholder.jpg";
+    float alpha = 0;
     float phi = 0;
     float theta = 0;
-    float alpha = 0;
     float light_theta = 0;
     float light_phi = 0;
     const float light_radius = 52;
@@ -213,7 +234,7 @@ int main(int argc, char** argv) {
         displacement = std::stof(parser.getCmdOption("d"));
         if (displacement > 0) {
             std::cout << "displacing occlusion boundaries by " << displacement << " units" << std::endl;
-	    std::cout << "WARNING: this looks terrible and doesn't work" << std::endl;
+	        std::cout << "WARNING: this looks terrible and doesn't work" << std::endl;
         }
     }
 
@@ -231,6 +252,11 @@ int main(int argc, char** argv) {
     if (parser.cmdOptionExists("s")) {
         scene_version = parser.getCmdOption("s");
         std::cout << "using scene version " << scene_version << std::endl;
+    }
+
+    if (parser.cmdOptionExists("planetex")) {
+        plane_texture = parser.getCmdOption("planetex");
+        std::cout << "using plane texture " << plane_texture << std::endl;
     }
 
     if (parser.cmdOptionExists("r")) {
@@ -279,7 +305,8 @@ int main(int argc, char** argv) {
                                "scene_gen_directspec.xml",
                                "scenewo_gen_directspec.xml",
                                "scene_gen_directdiffuse.xml",
-                               "scenewo_gen_directdiffuse.xml"};
+                               "scenewo_gen_directdiffuse.xml",
+                               "scene_gen_texonly.xml"};
 
     if (parser.cmdOptionExists("save")) {
         basename = parser.getCmdOption("save");
@@ -540,6 +567,15 @@ int main(int argc, char** argv) {
         directdiffusewoscene->SaveXML(directdiffusescenewoof);
         directdiffusescenewoof.close();
         std::cout << filenames[10] << std::endl;
+    }
+    if (scene_mask[11] != '0') {
+        auto texonlyscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+                                               light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
+                                               random_angle, random_axis_light, random_angle_light, texture_only, plane_texture);
+        std::ofstream texonlysceneof(filenames[11]);
+        texonlyscene->SaveXML(texonlysceneof);
+        texonlysceneof.close();
+        std::cout << filenames[11] << std::endl;
     }
     return 0;
 }
