@@ -166,6 +166,7 @@ int main(int argc, char** argv) {
     srand((unsigned int) time(0));
 
     bool output_masks = false;
+    bool model = true;
     std::string filename, mask_filename;
     std::string envmap;
     const float correction_factor = 8.0f/8.72551f; //hand measured error factor
@@ -345,21 +346,28 @@ int main(int argc, char** argv) {
         std::cout << "using texture " << texture_image << std::endl;
     }
 
+    if (parser.cmdOptionExists("nomodel")) {
+        model = false;
+    }
+
+
+
     // Read Depth image
     cv::Mat depth_img = cv::imread(filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
     if (!depth_img.data) {
-      std::cout << "image not found: " << filename << std::endl;
-      return 1;
+        std::cout << "image not found: " << filename << std::endl;
+        return 1;
     }
     //depth_img = max_depth * (1-depth_img); //if transformation is needed
 
     // Read Mask image
     cv::Mat mask_img = cv::imread(mask_filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
     if (!mask_img.data) {
-      std::cout << "image not found: " << mask_filename << std::endl;
-      return 1;
+        std::cout << "image not found: " << mask_filename << std::endl;
+        return 1;
     }
-    std::cout << "depth_img: (" << depth_img.cols << ", " << depth_img.rows << ")" << std::endl << "mask_img: (" << mask_img.cols << ", " << mask_img.rows << ")" << std::endl;
+    std::cout << "depth_img: (" << depth_img.cols << ", " << depth_img.rows << ")" << std::endl << "mask_img: ("
+              << mask_img.cols << ", " << mask_img.rows << ")" << std::endl;
 
     if (mask_img.cols != depth_img.cols || mask_img.rows != depth_img.rows) {
         std::cout << "depth image and mask image dimensions do not match, aborting" << std::endl;
@@ -371,7 +379,7 @@ int main(int argc, char** argv) {
     if (output_masks) {
         cv::imwrite(object_mask_path, mask);
     }
-    mask.convertTo(mask, depth_img.type(), 1/255.f);
+    mask.convertTo(mask, depth_img.type(), 1 / 255.f);
     cv::Mat depthwo_img = depth_img.mul(mask);
 
     const int original_width = depth_img.cols;
@@ -382,13 +390,6 @@ int main(int argc, char** argv) {
     cv::resize(mask_img, mask_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
-    OBJMesh<float> mesh = createMesh(resampled_depth_img, min_depth, max_depth, occlusion_threshold, correction_factor);
-    OBJMesh<float> meshwo = createMesh(depthwo_img, min_depth, max_depth, occlusion_threshold, correction_factor);
-    //OBJMesh<float> meshobj = createMesh(mask_img, min_depth, max_depth, occlusion_threshold, correction_factor);
-
-    std::cout << "finished creating mesh " << std::endl;
-
-    std::cout << "generating scene" << std::endl;
     const float radius = 26;
     const Eigen::Matrix<float, 3, 1> center(0, 1, 0);
     const Eigen::Matrix<float, 3, 1> up(0, 1, 0);
@@ -399,47 +400,63 @@ int main(int argc, char** argv) {
     Eigen::Matrix<float, 4, 4> camToWorld = geom::lookAt(eye, center, up);
 
     std::cout << "camera position: " << std::endl << eye << std::endl;
-    std::cout << "transforming mesh" << std::endl;
+    float minHeight = 0;
+    if (model) {
+        OBJMesh<float> mesh = createMesh(resampled_depth_img, min_depth, max_depth, occlusion_threshold,
+                                         correction_factor);
+        OBJMesh<float> meshwo = createMesh(depthwo_img, min_depth, max_depth, occlusion_threshold, correction_factor);
+        //OBJMesh<float> meshobj = createMesh(mask_img, min_depth, max_depth, occlusion_threshold, correction_factor);
 
-    std::vector<float> heights;
+        std::cout << "finished creating mesh " << std::endl;
 
-    mesh.Transform(camToWorld);
-    meshwo.Transform(camToWorld);
-    //meshobj.Transform(camToWorld);
+        std::cout << "transforming mesh" << std::endl;
 
-    const size_t n = mesh.GetNumVertices();
-    for (int i=1; i<=n; i++) {
-        Vector3<float> &vert = mesh.GetVertex(i);
-        heights.push_back(vert[1]);
+        std::vector<float> heights;
+
+        mesh.Transform(camToWorld);
+        meshwo.Transform(camToWorld);
+        //meshobj.Transform(camToWorld);
+
+        const size_t n = mesh.GetNumVertices();
+        for (int i = 1; i <= n; i++) {
+            Vector3<float> &vert = mesh.GetVertex(i);
+            heights.push_back(vert[1]);
+        }
+
+        std::sort(heights.begin(), heights.end());
+        const size_t smallIndex = std::max(depth_img.rows, depth_img.cols) * 2;
+        minHeight = heights[smallIndex];
+        std::cout << "deleting below " << minHeight << std::endl;
+        const size_t oldSize = mesh.GetNumElements();
+        mesh.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
+        meshwo.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
+        //meshobj.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
+        const size_t newSize = mesh.GetNumElements();
+        std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize
+                  << std::endl;
+        if (output_masks) {
+            cv::Mat mask = createMask(depth_img, min_depth, max_depth, [&](Vector3<float> p) -> bool {
+                Eigen::Vector4f pp;
+                pp.head(3) = p;
+                pp[3] = 1;
+                return (camToWorld * pp)[1] < minHeight + floorEps;
+            }, correction_factor);
+            cv::imwrite(plane_mask_path, mask);
+        }
+
+        std::ofstream of(mesh_path);
+        mesh.SaveOBJ(of);
+        of.close();
+        std::cout << "saved mesh at " << mesh_path << std::endl;
+        std::ofstream ofwo(meshwo_path);
+        meshwo.SaveOBJ(ofwo);
+        ofwo.close();
+        std::cout << "saved (wo) mesh at " << meshwo_path << std::endl;
+        /*std::ofstream ofobj(meshobj_path);
+        meshobj.SaveOBJ(ofobj);
+        ofobj.close();
+        std::cout << "saved (obj) mesh at " << meshobj_path << std::endl; */
     }
-
-    std::sort(heights.begin(), heights.end());
-    const size_t smallIndex = std::max(depth_img.rows, depth_img.cols) * 2;
-    const float minHeight = heights[smallIndex];
-    std::cout << "deleting below " << minHeight << std::endl;
-    const size_t oldSize = mesh.GetNumElements();
-    mesh.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
-    meshwo.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
-    //meshobj.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
-    const size_t newSize = mesh.GetNumElements();
-    std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize << std::endl;
-    if (output_masks) {
-        cv::Mat mask = createMask(depth_img, min_depth, max_depth, [&](Vector3<float> p) -> bool { Eigen::Vector4f pp; pp.head(3)=p; pp[3]=1; return (camToWorld*pp)[1] < minHeight + floorEps; }, correction_factor);
-        cv::imwrite(plane_mask_path, mask);
-    }
-
-    std::ofstream of(mesh_path);
-    mesh.SaveOBJ(of);
-    of.close();
-    std::cout << "saved mesh at " << mesh_path << std::endl;
-    std::ofstream ofwo(meshwo_path);
-    meshwo.SaveOBJ(ofwo);
-    ofwo.close();
-    std::cout << "saved (wo) mesh at " << meshwo_path << std::endl;
-    /*std::ofstream ofobj(meshobj_path);
-    meshobj.SaveOBJ(ofobj);
-    ofobj.close();
-    std::cout << "saved (obj) mesh at " << meshobj_path << std::endl; */
 
     const float lightZ = light_radius * sin(light_theta) * cos(light_phi);
     const float lightX = light_radius * cos(light_theta) * cos(light_phi);
