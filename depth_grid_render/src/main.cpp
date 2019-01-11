@@ -382,8 +382,14 @@ int main(int argc, char** argv) {
     mask.convertTo(mask, depth_img.type(), 1 / 255.f);
     cv::Mat depthwo_img = depth_img.mul(mask);
 
-    const int original_width = depth_img.cols;
-    const int original_height = depth_img.rows;
+    int original_width = depth_img.cols;
+    int original_height = depth_img.rows;
+
+    if (parser.cmdOptionExists("width") && parser.cmdOptionExists("height")) {
+        original_width = std::stoi(parser.getCmdOption("width"));
+        original_height = std::stoi(parser.getCmdOption("height"));
+    }
+
     cv::Mat resampled_depth_img;
     cv::resize(depth_img, resampled_depth_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
     cv::resize(depthwo_img, depthwo_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
