@@ -179,5 +179,6 @@ for filename in ${datadir}/*_Y.exr; do
     echo "Render direct specular without object"
     mitsuba ${outdir}/${tag}_scenewo_gen_directspec.xml -o $outfilewodirectspec -p $maxcpus
     gsutil -m cp $outdir/* gs://render-data/output/synthetic
+    rm $outdir/*
     #exit #remove when this actually works
 done
