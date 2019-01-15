@@ -14,7 +14,7 @@
 
 #define NUM_SCENES 12
 
-enum SceneMode {normal, flip, specular, directDiffuse, directSpec, texture_only};
+enum SceneMode {normal, flip, specular, directDiffuse, directSpec, texture_only, texture_inf};
 
 void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-s <scene_format_version>] [-r <resize_factor>] [-rand <angle_randomness_magnitude_in_degrees>] [-scenes (1|0){12}] [-save <name>]" << std::endl;
@@ -46,7 +46,7 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     cam_trans->AddChild(look_at);
     camera->AddChild(cam_trans);
 
-    if (mode != texture_only) {
+    if (mode != texture_only && mode != texture_inf) {
         auto shape = make_shared<XMLElement>("shape", "obj");
         shape->AddChild(make_shared<XMLElement>("string", "filename", meshPath));
         if (mode == normal) {
@@ -90,11 +90,16 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
       plane_trans->AddChild(plane_rotate);
       plane->AddChild(plane_trans);
 
-      if (mode == texture_only) {
+      if (mode == texture_only || mode == texture_inf) {
           //TODO: load actual texture for plane
           auto plane_bsdf = make_shared<XMLElement>("bsdf", "diffuse");
           //area_emitter->AddChild(make_shared<XMLElement>("spectrum", "radiance", "1"));
           auto texture = make_shared<XMLElement>("texture", "bitmap");
+          if (mode == texture_inf) {
+              texture->AddChild(make_shared<XMLElement>("float", "uscale", "10"));
+              texture->AddChild(make_shared<XMLElement>("float", "vscale", "10"));
+              plane_trans->AddChild(XMLElement::Scale(10, 1, 10));
+          }
           texture->AddProperty("name", "reflectance");
           texture->AddChild(make_shared<XMLElement>("string", "filename", planeTexture));
           plane_bsdf->AddChild(texture);
@@ -117,7 +122,7 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
       scene->AddChild(plane);
     }
 
-    if (mode != specular && mode != texture_only) {
+    if (mode != specular && mode != texture_only && mode != texture_inf) {
         auto emitter = make_shared<XMLElement>("emitter", "envmap");
         emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
         if (random_angle != 0) {
@@ -177,7 +182,7 @@ int main(int argc, char** argv) {
     float scale_factor = 0.5;
     const float floorEps = 5e-2;
     const float floor_normal_angle_range = 60;
-    std::string texture_image = "texture.exr";
+    std::string texture_image = "texture.png";
     std::string plane_texture = "placeholder.jpg";
     float alpha = 0;
     float phi = 0;
@@ -594,7 +599,7 @@ int main(int argc, char** argv) {
     if (scene_mask[11] != '0') {
         auto texonlyscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
                                                light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
-                                               random_angle, random_axis_light, random_angle_light, texture_only, plane_texture);
+                                               random_angle, random_axis_light, random_angle_light, texture_inf, plane_texture);
         std::ofstream texonlysceneof(filenames[11]);
         texonlyscene->SaveXML(texonlysceneof);
         texonlysceneof.close();
