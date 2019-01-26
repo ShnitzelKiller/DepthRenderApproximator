@@ -177,7 +177,7 @@ int main(int argc, char** argv) {
     const float correction_factor = 8.0f/8.72551f; //hand measured error factor
     
     std::string object_mask_path = "objectmask.png";
-    const std::string plane_mask_path = "planemask.png";
+    std::string plane_mask_path = "planemask.png";
 
     float scale_factor = 0.5;
     const float floorEps = 5e-2;
@@ -325,6 +325,7 @@ int main(int argc, char** argv) {
         mesh_path.insert(0, basename);
         meshwo_path.insert(0, basename);
         object_mask_path.insert(0, basename);
+        plane_mask_path.insert(0, basename);
 
         if (randomness_alpha || randomness_angle) {
             std::ofstream paramof(basename + "PARAM.txt");
