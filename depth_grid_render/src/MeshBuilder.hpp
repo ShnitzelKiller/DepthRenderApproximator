@@ -13,7 +13,7 @@ cv::Mat createMask(const cv::Mat &depth_img, T min_depth, T max_depth, PredFun f
     const T fov = static_cast<T>(45) / 180 * M_PI;
     const T cx = depth_img.cols / 2.0f;
     const T cy = depth_img.rows / 2.0f;
-    const T constant_x = 2 * (tan(fov/static_cast<T>(2))) / depth_img.cols * correction_factor;
+    const T constant_x = 2 * (tan(fov/static_cast<T>(2))) / depth_img.cols;
     const T constant_y = constant_x; //assume uniform pinhole model
 
     cv::Mat mask = cv::Mat::zeros(cv::Size(depth_img.cols, depth_img.rows), CV_8UC3);
@@ -27,6 +27,7 @@ cv::Mat createMask(const cv::Mat &depth_img, T min_depth, T max_depth, PredFun f
             T px = (u - cx) * constant_x;
             T py = -(v - cy) * constant_y;
             depth /= sqrt(1+px*px+py*py);
+	    depth *= correction_factor;
             px *= depth;
             py *= depth;
             if (f(Vector3<T>(px, py, -depth))) {
