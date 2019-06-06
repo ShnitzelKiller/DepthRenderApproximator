@@ -42,6 +42,11 @@ public:
     void SaveXML(std::ofstream &of) const {
         SaveXML(of, 0);
     }
+  void SaveXML(std::string fn) const {
+    std::ofstream sceneof(fn);
+    SaveXML(sceneof);
+    sceneof.close();
+  }
     /**
      * construct a rotation element around the axis (x, y, z)
      */
