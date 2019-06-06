@@ -17,7 +17,7 @@
 enum SceneMode {normal, flip, specular, directDiffuse, directSpec, texture_only, texture_inf, plane_only};
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-output_masks 1] [-s <scene_format_version>] [-planetex <plane_texture_filename>] [-r <resize_factor>] [-randang <angle_randomness_magnitude_in_degrees>] [-randalpha <std>] [-nomodel 1] [-width <w>] [-height <h>] [-scenes (1|0){13}] [-save <name>]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-output_masks 1] [-s <scene_format_version>] [-correction <fac>] [-planetex <plane_texture_filename>] [-r <resize_factor>] [-randang <angle_randomness_magnitude_in_degrees>] [-randalpha <std>] [-nomodel 1] [-width <w>] [-height <h>] [-scenes (1|0){13}] [-save <name>]" << std::endl;
 }
 
 std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal, std::string planeTexture="") {
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
     bool model = true;
     std::string filename, mask_filename, depthwo_filename;
     std::string envmap;
-    const float correction_factor = 8.0f/8.72551f; //hand measured error factor
+    float correction_factor = 8.0f/8.72551f; //hand measured error factor
     
     std::string object_mask_path = "objectmask.png";
     std::string plane_mask_path = "planemask.png";
@@ -261,6 +261,9 @@ int main(int argc, char** argv) {
         } else {
             scene_mask = scene_mask0;
         }
+    }
+    if (parser.cmdOptionExists("correction")) {
+      correction_factor = std::stof(parser.getCmdOption("correction"));
     }
     if (parser.cmdOptionExists("s")) {
         scene_version = parser.getCmdOption("s");
