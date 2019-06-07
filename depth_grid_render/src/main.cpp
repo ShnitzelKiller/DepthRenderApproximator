@@ -20,10 +20,9 @@ void usage(char* program_name) {
     std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-output_masks 1] [-s <scene_format_version>] [-correction <fac>] [-planetex <plane_texture_filename>] [-r <resize_factor>] [-randang <angle_randomness_magnitude_in_degrees>] [-randalpha <std>] [-nomodel 1] [-width <w>] [-height <h>] [-scenes (1|0){13}] [-save <name>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Vector3f &camOrigin, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal, std::string planeTexture="") {
+std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Matrix<float, 4, 4> &mat, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal, std::string planeTexture="") {
     using namespace std;
-    ostringstream eye;
-    eye << camOrigin[0] << ", " << camOrigin[1] << ", " << camOrigin[2];
+    auto frame_matrix = XMLElement::Matrix(mat);
 
     auto scene = make_shared<XMLElement>("scene");
     scene->AddProperty("version", move(scene_version));
@@ -39,13 +38,10 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
     film->AddChild(make_shared<XMLElement>("boolean", "banner", "false"));
     camera->AddChild(film);
     auto cam_trans = XMLElement::Transform("toWorld");
-    auto look_at = make_shared<XMLElement>("lookat");
-    look_at->AddProperty("origin", eye.str());
-    look_at->AddProperty("target", "0, 1, 0");
-    look_at->AddProperty("up", "0, 1, 0");
-    cam_trans->AddChild(look_at);
+    cam_trans->AddChild(XMLElement::Rotation(1, 180));
     camera->AddChild(cam_trans);
 
+    //add shape
     if (mode != texture_only && mode != texture_inf && mode != plane_only) {
         auto shape = make_shared<XMLElement>("shape", "obj");
         shape->AddChild(make_shared<XMLElement>("string", "filename", meshPath));
@@ -80,7 +76,8 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
         scene->AddChild(shape);
 
     }
-
+    
+    //add plane
     if (mode != flip) {
       auto plane = make_shared<XMLElement>("shape", "rectangle");
       auto plane_trans = XMLElement::Transform("toWorld");
@@ -124,18 +121,21 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap
           }
           plane->AddChild(plane_bsdf);
       }
+      plane_trans->AddChild(frame_matrix);
       scene->AddChild(plane);
     }
-
+    
+    //add lighting
     if (mode != specular && mode != texture_only && mode != texture_inf && mode != plane_only) {
         auto emitter = make_shared<XMLElement>("emitter", "envmap");
         emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
+	auto env_transform = XMLElement::Transform("toWorld");
+	env_transform->AddChild(frame_matrix);
         if (random_angle != 0) {
-            auto env_transform = XMLElement::Transform("toWorld");
             auto env_rotate = XMLElement::Rotation(random_axis.x(), random_axis.y(), random_axis.z(), random_angle);
             env_transform->AddChild(env_rotate);
-            emitter->AddChild(env_transform);
         }
+	emitter->AddChild(env_transform);
         scene->AddChild(emitter);
         if (pointlight) {
             auto light = make_shared<XMLElement>("emitter", "point");
@@ -368,7 +368,6 @@ int main(int argc, char** argv) {
     }
 
 
-
     // Read Depth image
     cv::Mat depth_img = cv::imread(filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
     if (!depth_img.data) {
@@ -420,6 +419,7 @@ int main(int argc, char** argv) {
     const float camY = radius * sin(phi);
     const Eigen::Matrix<float, 3, 1> eye(camX, camY, camZ);
     Eigen::Matrix<float, 4, 4> camToWorld = geom::lookAt(eye, center, up);
+    Eigen::Matrix<float, 4, 4> worldToCam = camToWorld.inverse();
 
     std::cout << "camera position: " << std::endl << eye << std::endl;
     float minHeight = 0;
@@ -453,6 +453,9 @@ int main(int argc, char** argv) {
         const size_t newSize = mesh.GetNumElements();
         std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize
                   << std::endl;
+	std::cout << "untransforming mesh" << std::endl;
+	mesh.Transform(worldToCam);
+        meshwo.Transform(worldToCam);
         if (output_masks) {
 	  auto predfun = [&](Vector3<float> p) -> bool {
                 Eigen::Vector4f pp;
@@ -486,7 +489,7 @@ int main(int argc, char** argv) {
 
     if (scene_mask[0] != '0') {
 
-        auto scene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+        auto scene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight, scene_version,
                                 light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
                                 random_angle, random_axis_light, random_angle_light);
         scene->SaveXML(filenames[0]);
@@ -495,7 +498,7 @@ int main(int argc, char** argv) {
 
     if (scene_mask[1] != '0') {
 
-        auto texscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+        auto texscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight, scene_version,
                                    light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, texture_image,
                                    random_axis, random_angle, random_axis_light, random_angle_light);
         texscene->SaveXML(filenames[1]);
@@ -504,7 +507,7 @@ int main(int argc, char** argv) {
 
     if (scene_mask[2] != '0') {
 
-        auto woscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+        auto woscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight, scene_version,
                                   light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, texture_image,
                                   random_axis, random_angle, random_axis_light, random_angle_light);
         woscene->SaveXML(filenames[2]);
@@ -513,7 +516,7 @@ int main(int argc, char** argv) {
 
     if (scene_mask[3] != '0') {
 
-        auto flippedscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
+        auto flippedscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight,
                                        scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "",
                                        random_axis, random_angle, random_axis_light, random_angle_light, flip);
         flippedscene->SaveXML(filenames[3]);
@@ -522,7 +525,7 @@ int main(int argc, char** argv) {
 
     if (scene_mask[4] != '0') {
 
-        auto flippedwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
+        auto flippedwoscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight,
                                          scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path,
                                          "", random_axis, random_angle, random_axis_light, random_angle_light,
                                          flip);
@@ -532,7 +535,7 @@ int main(int argc, char** argv) {
 
     if (scene_mask[5] != '0') {
 
-        auto specscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight,
+        auto specscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight,
                                        scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path,
                                        "", random_axis, random_angle, random_axis_light, random_angle_light,
                                        specular);
@@ -542,7 +545,7 @@ int main(int argc, char** argv) {
 
     if (scene_mask[6] != '0') {
 
-        auto specwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+        auto specwoscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight, scene_version,
                                       light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
                                       random_angle, random_axis_light, random_angle_light, specular);
         specwoscene->SaveXML(filenames[6]);
@@ -551,7 +554,7 @@ int main(int argc, char** argv) {
 
     if (scene_mask[7] != '0') {
 
-        auto directspecscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+        auto directspecscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight, scene_version,
                                       light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
                                       random_angle, random_axis_light, random_angle_light, directSpec);
         directspecscene->SaveXML(filenames[7]);
@@ -560,7 +563,7 @@ int main(int argc, char** argv) {
 
     if (scene_mask[8] != '0') {
 
-        auto directspecwoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+        auto directspecwoscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight, scene_version,
                                           light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
                                           random_angle, random_axis_light, random_angle_light, directSpec);
         directspecwoscene->SaveXML(filenames[8]);
@@ -569,7 +572,7 @@ int main(int argc, char** argv) {
 
     if (scene_mask[9] != '0') {
 
-        auto directdiffusescene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+        auto directdiffusescene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight, scene_version,
                                           light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
                                           random_angle, random_axis_light, random_angle_light, directDiffuse);
         directdiffusescene->SaveXML(filenames[9]);
@@ -577,21 +580,21 @@ int main(int argc, char** argv) {
     }
 
     if (scene_mask[10] != '0') {
-        auto directdiffusewoscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+        auto directdiffusewoscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight, scene_version,
                                             light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
                                             random_angle, random_axis_light, random_angle_light, directDiffuse);
         directdiffusewoscene->SaveXML(filenames[10]);
         std::cout << filenames[10] << std::endl;
     }
     if (scene_mask[11] != '0') {
-      auto planeonlyscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+      auto planeonlyscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight, scene_version,
                                              light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
                                              random_angle, random_axis_light, random_angle_light, texture_only, plane_texture);
       planeonlyscene->SaveXML(filenames[11]);
       std::cout << filenames[11] << std::endl;
     }
     if (scene_mask[12] != '0') {
-        auto texonlyscene = buildScene(original_width, original_height, envmap, alpha, eye, minHeight, scene_version,
+        auto texonlyscene = buildScene(original_width, original_height, envmap, alpha, worldToCam, minHeight, scene_version,
                                                light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
                                                random_angle, random_axis_light, random_angle_light, texture_inf, plane_texture);
         texonlyscene->SaveXML(filenames[12]);

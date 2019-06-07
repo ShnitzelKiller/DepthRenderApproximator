@@ -6,7 +6,9 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <sstream>
 #include <fstream>
+#include <Eigen/Dense>
 
 class XMLElement {
 public:
@@ -96,6 +98,14 @@ public:
             trans->AddProperty("z", std::to_string(z));
         return trans;
     }
+  template <class T>
+  static std::shared_ptr<XMLElement> Matrix(const Eigen::Matrix<T, 4, 4> &mat) {
+    auto xmat = std::make_shared<XMLElement>("matrix");
+    std::ostringstream smat;
+    smat << mat(0,0) << " " << mat(0, 1) << " " << mat(0, 2) << " " << mat(0, 3) << " " << mat(1,0) << " " << mat(1, 1) << " " << mat(1, 2) << " " << mat(1, 3) << " " << mat(2,0) << " " << mat(2, 1) << " " << mat(2, 2) << " " << mat(2, 3) << " " << mat(3,0) << " " << mat(3, 1) << " " << mat(3, 2) << " " << mat(3, 3);
+    xmat->AddProperty("value", smat.str());
+    return xmat;
+  }
 
     /**
      * Construct a scale element
