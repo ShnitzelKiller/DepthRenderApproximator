@@ -43,11 +43,45 @@ private:
 template <typename T>
 class OBJMesh {
 public:
-    OBJMesh() {}
+  OBJMesh() : computed_normals(false) {}
+  
+  void RecomputeNormals() {
+    normals.resize(verts.size());
+    int counts[verts.size()];
+    for (int i=0; i<normals.size(); i++) {
+      normals[i] = Vector3<T>::Zero(3);
+    }
+    for (int i=0; i<tris.size(); i++) {
+      Eigen::Vector3i tri = tris[i];
+      Vector3<T> v0 = GetVertex(tri(0));
+      Vector3<T> v1 = GetVertex(tri(1));
+      Vector3<T> v2 = GetVertex(tri(2));
+      Vector3<T> n = (v1-v0).cross(v2-v1).normalized();
+      normals[tri(0)-1] += n;
+      counts[tri(0)-1] += 1;
+      normals[tri(1)-1] += n;
+      counts[tri(1)-1] += 1;
+      normals[tri(2)-1] += n;
+      counts[tri(2)-1] += 1;
+    }
+    for (int i=0; i<normals.size(); i++) {
+      if (counts[i] != 0)
+	normals[i] /= counts[i];
+    }
+    computed_normals = true;
+  }
+  
+  const Vector3<T> &GetNormal(int index) {
+    if (!computed_normals) {
+      RecomputeNormals();
+    }
+    return normals[index-1];
+  }
 
     void AddVertex(const Vector3<T> &v, const Vector2<T> &uv) {
         verts.push_back(v);
         uvs.push_back(uv);
+	computed_normals = false;
     }
 
   size_t GetNumVertices() const {
@@ -60,6 +94,7 @@ public:
 
     void AddTri(const Eigen::Vector3i &f) {
         tris.push_back(f);
+	computed_normals = false;
     }
 
   void SaveOBJ(std::ofstream &of, bool flip_normals=false) const {
@@ -108,10 +143,12 @@ public:
     YTest<T> cond(threshold, verts, strict, angle);
     auto search = std::remove_if(tris.begin(), tris.end(), cond);
     tris.erase(search, tris.end());
+    computed_normals = false;
   }
 
   void Transform(Eigen::Matrix<T, 4, 4> &transform) {
     Eigen::Matrix4Xf allverts(4, verts.size());
+    Eigen::Matrix4Xf allnorms(4, normals.size());
       for (int i=0; i<verts.size(); i++) {
         allverts.col(i).head(3) = verts[i];
         allverts(3, i) = 1;
@@ -120,16 +157,34 @@ public:
       for (int i=0; i<verts.size(); i++) {
           verts[i] = allverts.col(i).head(3);
       }
+      for (int i=0; i<normals.size(); i++) {
+	allnorms.col(i).head(3) = normals[i];
+	allnorms(3,i) = 0;
+      }
+      allnorms = transform * allnorms;
+      for (int i=0; i<normals.size(); i++) {
+	normals[i] = allnorms.col(i).head(3);
+      }
     }
   void TransformInv(Eigen::Matrix<T,4,4> &transform) {
     Eigen::Matrix4Xf allverts(4, verts.size());
+    Eigen::Matrix4Xf allnorms(4, normals.size());
     for (int i=0; i<verts.size(); i++) {
       allverts.col(i).head(3) = verts[i];
       allverts(3,i) = 1;
     }
-    allverts = transform.colPivHouseholderQr().solve(allverts);
+    auto fac = transform.colPivHouseholderQr();
+    allverts = fac.solve(allverts);
     for (int i=0; i<verts.size(); i++) {
       verts[i] = allverts.col(i).head(3);
+    }
+    for (int i=0; i<normals.size(); i++) {
+	allnorms.col(i).head(3) = normals[i];
+	allnorms(3,i) = 0;
+    }
+    allnorms = fac.solve(allnorms);
+    for (int i=0; i<normals.size(); i++) {
+      normals[i] = allnorms.col(i).head(3);
     }
   }
 
@@ -137,7 +192,8 @@ private:
     std::vector<Vector3<T>> verts;
     std::vector<Vector2<T>> uvs;
     std::vector<Eigen::Vector3i> tris;
-
+    bool computed_normals;
+  std::vector<Vector3<T>> normals;
 };
 
 #endif

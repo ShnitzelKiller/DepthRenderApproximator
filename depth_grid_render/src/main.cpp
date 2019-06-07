@@ -17,7 +17,7 @@
 enum SceneMode {normal, flip, specular, directDiffuse, directSpec, texture_only, texture_inf, plane_only};
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap theta phi alpha maskfilename [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-output_masks 1] [-s <scene_format_version>] [-correction <fac>] [-planetex <plane_texture_filename>] [-r <resize_factor>] [-randang <angle_randomness_magnitude_in_degrees>] [-randalpha <std>] [-nomodel 1] [-width <w>] [-height <h>] [-scenes (1|0){13}] [-save <name>]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap alpha maskfilename [-theta <value>] [-phi <value>] [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-output_masks 1] [-s <scene_format_version>] [-correction <fac>] [-planetex <plane_texture_filename>] [-r <resize_factor>] [-randang <angle_randomness_magnitude_in_degrees>] [-randalpha <std>] [-nomodel 1] [-width <w>] [-height <h>] [-scenes (1|0){13}] [-save <name>]" << std::endl;
 }
 
 std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Matrix<float, 4, 4> &mat, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal, std::string planeTexture="") {
@@ -193,6 +193,7 @@ int main(int argc, char** argv) {
     float alpha = 0;
     float phi = 0;
     float theta = 0;
+    bool use_camera_angle = false;
     float light_theta = 0;
     float light_phi = 0;
     const float light_radius = 52;
@@ -209,6 +210,7 @@ int main(int argc, char** argv) {
     bool randomness_alpha = false;
     bool randomness_angle = false;
     bool light = false;
+    std::default_random_engine generator((unsigned int) time(0));
     std::string scene_version("0.6.0");
     std::string scene_mask;
     for (int i=0; i<NUM_SCENES; i++) {
@@ -219,16 +221,20 @@ int main(int argc, char** argv) {
 
     OptionParser parser(argc, argv);
     std::cout << parser.getNumArguments() << " arguments" << std::endl;
-    if (parser.getNumArguments() != 6) {
+    if (parser.getNumArguments() != 4) {
         usage(argv[0]);
         return 0;
     }
     filename = parser.getPositionalArgument(0);
     envmap = parser.getPositionalArgument(1);
-    theta = std::stof(parser.getPositionalArgument(2)) / 180.0f * (float) M_PI;
-    phi = std::stof(parser.getPositionalArgument(3)) / 180.0f * (float) M_PI;
-    alpha = std::stof(parser.getPositionalArgument(4)) / 10000.0f;
-    mask_filename = parser.getPositionalArgument(5);
+    alpha = std::stof(parser.getPositionalArgument(2)) / 10000.0f;
+    mask_filename = parser.getPositionalArgument(3);
+
+    if (parser.cmdOptionExists("theta") && parser.cmdOptionExists("phi")) {
+      use_camera_angle = true;
+      theta = std::stof(parser.getCmdOption("theta")) / 180.0f * (float) M_PI;
+      phi = std::stof(parser.getCmdOption("phi")) / 180.0f * (float) M_PI;
+    }
 
     if (parser.cmdOptionExists("ltheta") && parser.cmdOptionExists("lphi")) {
         light = true;
@@ -299,7 +305,6 @@ int main(int argc, char** argv) {
         alpha_random_std = std::stof(parser.getCmdOption("randalpha"));
         std::cout << "random alpha magnitude: " << alpha_random_std << std::endl;
         if (alpha_random_std > 0) {
-            std::default_random_engine generator((unsigned int) time(0));
             std::normal_distribution<float> distribution(0, alpha_random_std);
             alpha = std::max(0.0f, alpha - std::fabs(distribution(generator)));
             std::cout << "perturbed alpha: " << alpha << std::endl;
@@ -366,6 +371,10 @@ int main(int argc, char** argv) {
     if (parser.cmdOptionExists("nomodel")) {
         model = false;
     }
+    if (!model && !use_camera_angle) {
+      std::cout << "if not using model, must supply -theta and -phi arguments" << std::endl;
+      return 1;
+    }
 
 
     // Read Depth image
@@ -411,17 +420,20 @@ int main(int argc, char** argv) {
     cv::resize(depthwo_img, depthwo_img, cv::Size(0, 0), scale_factor, scale_factor, cv::INTER_NEAREST);
     std::cout << "width: " << depth_img.cols << " height: " << depth_img.rows << std::endl;
 
-    const float radius = 26;
-    const Eigen::Matrix<float, 3, 1> center(0, 1, 0);
-    const Eigen::Matrix<float, 3, 1> up(0, 1, 0);
-    const float camZ = radius * sin(theta) * cos(phi);
-    const float camX = radius * cos(theta) * cos(phi);
-    const float camY = radius * sin(phi);
-    const Eigen::Matrix<float, 3, 1> eye(camX, camY, camZ);
-    Eigen::Matrix<float, 4, 4> camToWorld = geom::lookAt(eye, center, up);
-    Eigen::Matrix<float, 4, 4> worldToCam = camToWorld.inverse();
-
-    std::cout << "camera position: " << std::endl << eye << std::endl;
+    Eigen::Matrix<float, 4, 4> camToWorld;
+    Eigen::Matrix<float, 4, 4> worldToCam;
+    if (use_camera_angle) {
+      const float radius = 26;
+      const Eigen::Matrix<float, 3, 1> center(0, 1, 0);
+      const Eigen::Matrix<float, 3, 1> up(0, 1, 0);
+      const float camZ = radius * sin(theta) * cos(phi);
+      const float camX = radius * cos(theta) * cos(phi);
+      const float camY = radius * sin(phi);
+      const Eigen::Matrix<float, 3, 1> eye(camX, camY, camZ);
+      std::cout << "camera position: " << std::endl << eye << std::endl;
+      camToWorld = geom::lookAt(eye, center, up);
+      worldToCam = camToWorld.inverse();
+    }
     float minHeight = 0;
     if (model) {
         OBJMesh<float> mesh = createMesh(resampled_depth_img, min_depth, max_depth, occlusion_threshold,
@@ -430,32 +442,75 @@ int main(int argc, char** argv) {
 
         std::cout << "finished creating mesh " << std::endl;
 
-        std::cout << "transforming mesh" << std::endl;
+	if (!use_camera_angle) {
+	  std::cout << "inferring transformation using RANSAC plane" << std::endl;
+	  size_t N = meshwo.GetNumVertices();
+	  std::uniform_int_distribution<size_t> dis(1, N);
+	  Eigen::Vector3f v0 = meshwo.GetVertex((int) dis(generator));
+	  Eigen::Vector3f v1 = meshwo.GetVertex((int) dis(generator));
+	  Eigen::Vector3f v2 = meshwo.GetVertex((int) dis(generator));
+	  Eigen::Vector3f n = (v1-v0).cross(v2-v0).normalized();
+	  Eigen::Vector3f p = (v0+v1+v2)/3.0f;
+	  Eigen::Matrix3Xf allverts(3, N);
+	  Eigen::Matrix3Xf allnorms(3, N);
+	  for (int i=0; i < N; i++) {
+	    allverts.col(i) = meshwo.GetVertex(i+1);
+	  }
+	  for (int i=0; i < N; i++) {
+	    allnorms.col(i) = meshwo.GetNormal(i+1);
+	  }
+	  const float threshold = 0.02f;
+	  const float ndot_min = -1.0f; //TODO: use this properly
+	  for (int i=0; i < 10; i++) {
+	    int inliers=0;
+	    Eigen::ArrayXf errors = n.transpose() * (allverts.colwise() - p);
+	    Eigen::ArrayXf nerrors = n.transpose() * allnorms;
+	    p = Eigen::Vector3f::Zero(3);
+	    n = Eigen::Vector3f::Zero(3);
+	    for (int j=0; j<N; j++) {
+	      if (std::fabs(errors(j)) < threshold && nerrors(j) > ndot_min) {
+		p += allverts.col(j);
+		n += allnorms.col(j);
+		inliers++;
+	      }
+	    }
+	    p /= inliers;
+	    n /= inliers;
+	    std::cout << "inliers: " << inliers << std::endl;
+	  }
+	  Eigen::Vector3f target = p+n;
+	  worldToCam = geom::lookAt(p, target, Eigen::Matrix<float, 3, 1>(0, 1, 0));
+	  camToWorld = worldToCam.inverse();
+	} else {
 
-        std::vector<float> heights;
+	  std::cout << "transforming mesh" << std::endl;
 
-        mesh.Transform(camToWorld);
-        meshwo.Transform(camToWorld);
+	  std::vector<float> heights;
 
-        const size_t n = mesh.GetNumVertices();
-        for (int i = 1; i <= n; i++) {
+	  mesh.Transform(camToWorld);
+	  meshwo.Transform(camToWorld);
+
+	  const size_t n = mesh.GetNumVertices();
+	  for (int i = 1; i <= n; i++) {
             Vector3<float> &vert = mesh.GetVertex(i);
             heights.push_back(vert[1]);
-        }
+	  }
 
-        std::sort(heights.begin(), heights.end());
-        const size_t smallIndex = std::max(depth_img.rows, depth_img.cols) * 2;
-        minHeight = heights[smallIndex];
-        std::cout << "deleting below " << minHeight << std::endl;
-        const size_t oldSize = mesh.GetNumElements();
-        mesh.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
-        meshwo.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
-        const size_t newSize = mesh.GetNumElements();
-        std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize
-                  << std::endl;
-	std::cout << "untransforming mesh" << std::endl;
-	mesh.Transform(worldToCam);
-        meshwo.Transform(worldToCam);
+	  std::sort(heights.begin(), heights.end());
+	  const size_t smallIndex = std::max(depth_img.rows, depth_img.cols) * 2;
+	  minHeight = heights[smallIndex];
+	  std::cout << "deleting below " << minHeight << std::endl;
+	  const size_t oldSize = mesh.GetNumElements();
+	  mesh.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
+	  meshwo.DeleteBelowY(minHeight + floorEps, true, floor_normal_angle_range);
+	  const size_t newSize = mesh.GetNumElements();
+	  std::cout << "deleted " << oldSize - newSize << " faces out of " << oldSize << ", leaving " << newSize
+		    << std::endl;
+	  std::cout << "untransforming mesh" << std::endl;
+	  mesh.Transform(worldToCam);
+	  meshwo.Transform(worldToCam);
+	}
+	
         if (output_masks) {
 	  auto predfun = [&](Vector3<float> p) -> bool {
                 Eigen::Vector4f pp;
