@@ -84,6 +84,10 @@ public:
 	computed_normals = false;
     }
 
+  void AddVertex(const Vector3<T> &v) {
+    AddVertex(v, v.head(2));
+    }
+
   size_t GetNumVertices() const {
     return verts.size();
   }
@@ -96,6 +100,10 @@ public:
         tris.push_back(f);
 	computed_normals = false;
     }
+  void AddTri(int i1, int i2, int i3) {
+    tris.emplace_back(i1, i2, i3);
+    computed_normals=false;
+  }
 
   void SaveOBJ(std::ofstream &of, bool flip_normals=false) const {
         for (const auto &vert : verts) {
@@ -123,6 +131,12 @@ public:
         mf << "newmtl textured" << std::endl;
         mf << "map_Kd texture.exr" << std::endl;
     }
+
+  void SaveOBJ(std::string fname, bool flip_normals=false) const {
+    std::ofstream of(fname);
+    SaveOBJ(of, flip_normals);
+    of.close();
+  }
 
     Vector3<T>& GetVertex(int index) {
         return verts[index - 1];

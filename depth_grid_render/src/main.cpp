@@ -2,6 +2,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #include <Eigen/Dense>
+#include <Eigen/Eigenvalues>
 #include "CameraUtils.hpp"
 #include "XMLWriter.hpp"
 #include "OBJWriter.hpp"
@@ -17,7 +18,7 @@
 enum SceneMode {normal, flip, specular, directDiffuse, directSpec, texture_only, texture_inf, plane_only};
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap alpha maskfilename [-theta <value>] [-phi <value>] [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-d <displacement_factor>] [-output_masks 1] [-s <scene_format_version>] [-correction <fac>] [-planetex <plane_texture_filename>] [-r <resize_factor>] [-randang <angle_randomness_magnitude_in_degrees>] [-randalpha <std>] [-nomodel 1] [-width <w>] [-height <h>] [-scenes (1|0){13}] [-save <name>]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap alpha maskfilename [-theta <value>] [-phi <value>] [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-norange] [-d <displacement_factor>] [-output_masks 1] [-s <scene_format_version>] [-correction <fac>] [-planetex <plane_texture_filename>] [-r <resize_factor>] [-randang <angle_randomness_magnitude_in_degrees>] [-randalpha <std>] [-nomodel 1] [-width <w>] [-height <h>] [-scenes (1|0){13}] [-save <name>]" << std::endl;
 }
 
 std::shared_ptr<XMLElement> buildScene(int width, int height, std::string envmap, float alpha, const Eigen::Matrix<float, 4, 4> &mat, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal, std::string planeTexture="") {
@@ -190,6 +191,9 @@ int main(int argc, char** argv) {
     const float floor_normal_angle_range = 60;
     std::string texture_image = "texture.png";
     std::string plane_texture = "placeholder.jpg";
+    bool range_correction=true;
+    bool ldr = false;
+    float fov = 45.0f;
     float alpha = 0;
     float phi = 0;
     float theta = 0;
@@ -198,8 +202,8 @@ int main(int argc, char** argv) {
     float light_phi = 0;
     const float light_radius = 52;
     float occlusion_threshold = 1;
-    const float max_depth = 1000;
-    const float min_depth = 1;
+    float max_depth = std::numeric_limits<float>::max();
+    float min_depth = std::numeric_limits<float>::lowest();
     float displacement = 0;
     float angle_random_magnitude = 0;
     float alpha_random_std = 0;
@@ -230,6 +234,28 @@ int main(int argc, char** argv) {
     alpha = std::stof(parser.getPositionalArgument(2)) / 10000.0f;
     mask_filename = parser.getPositionalArgument(3);
 
+    if (parser.cmdOptionExists("fov")) {
+      fov = std::stof(parser.getCmdOption("fov"));
+    }
+    std::cout << "fov: " << fov << std::endl;
+
+    if (parser.cmdOptionExists("norange")) {
+      std::cout << "assuming depth input" << std::endl;
+      range_correction=false;
+    } else {
+      std::cout << "assuming range input" << std::endl;
+    }
+
+    if (parser.cmdOptionExists("mindepth")) {
+      min_depth = std::stof(parser.getCmdOption("mindepth"));
+      std::cout << "min depth: " << min_depth << std::endl;
+    }
+
+    if (parser.cmdOptionExists("maxdepth")) {
+      max_depth = std::stof(parser.getCmdOption("maxdepth"));
+      std::cout << "max depth: " << max_depth << std::endl;
+    }
+      
     if (parser.cmdOptionExists("theta") && parser.cmdOptionExists("phi")) {
       use_camera_angle = true;
       theta = std::stof(parser.getCmdOption("theta")) / 180.0f * (float) M_PI;
@@ -375,10 +401,15 @@ int main(int argc, char** argv) {
       std::cout << "if not using model, must supply -theta and -phi arguments" << std::endl;
       return 1;
     }
-
+    int options = cv::IMREAD_GRAYSCALE;
+    if (!parser.cmdOptionExists("ldr")) {
+      ldr = true;
+	std::cout << "not reading float image" << std::endl;
+	options = options | cv::IMREAD_ANYDEPTH;
+    }
 
     // Read Depth image
-    cv::Mat depth_img = cv::imread(filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
+    cv::Mat depth_img = cv::imread(filename, options);
     if (!depth_img.data) {
         std::cout << "image not found: " << filename << std::endl;
         return 1;
@@ -386,7 +417,7 @@ int main(int argc, char** argv) {
     //depth_img = max_depth * (1-depth_img); //if transformation is needed
 
     // Read Mask image
-    cv::Mat mask_img = cv::imread(mask_filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
+    cv::Mat mask_img = cv::imread(mask_filename, options);
     if (!mask_img.data) {
         std::cout << "image not found: " << mask_filename << std::endl;
         return 1;
@@ -436,51 +467,104 @@ int main(int argc, char** argv) {
     }
     float minHeight = 0;
     if (model) {
+      cv::imwrite("testimg.png", resampled_depth_img);
         OBJMesh<float> mesh = createMesh(resampled_depth_img, min_depth, max_depth, occlusion_threshold,
-                                         correction_factor);
-        OBJMesh<float> meshwo = createMesh(depthwo_img, min_depth, max_depth, occlusion_threshold, correction_factor);
+                                         correction_factor, range_correction, fov);
+        OBJMesh<float> meshwo = createMesh(depthwo_img, min_depth, max_depth, occlusion_threshold, correction_factor, range_correction, fov);
 
         std::cout << "finished creating mesh " << std::endl;
 
 	if (!use_camera_angle) {
 	  std::cout << "inferring transformation using RANSAC plane" << std::endl;
-	  size_t N = meshwo.GetNumVertices();
-	  std::uniform_int_distribution<size_t> dis(1, N);
-	  Eigen::Vector3f v0 = meshwo.GetVertex((int) dis(generator));
-	  Eigen::Vector3f v1 = meshwo.GetVertex((int) dis(generator));
-	  Eigen::Vector3f v2 = meshwo.GetVertex((int) dis(generator));
-	  Eigen::Vector3f n = (v1-v0).cross(v2-v0).normalized();
-	  Eigen::Vector3f p = (v0+v1+v2)/3.0f;
-	  Eigen::Matrix3Xf allverts(3, N);
-	  Eigen::Matrix3Xf allnorms(3, N);
-	  for (int i=0; i < N; i++) {
-	    allverts.col(i) = meshwo.GetVertex(i+1);
-	  }
-	  for (int i=0; i < N; i++) {
-	    allnorms.col(i) = meshwo.GetNormal(i+1);
-	  }
-	  const float threshold = 0.02f;
-	  const float ndot_min = -1.0f; //TODO: use this properly
-	  for (int i=0; i < 10; i++) {
-	    int inliers=0;
-	    Eigen::ArrayXf errors = n.transpose() * (allverts.colwise() - p);
-	    Eigen::ArrayXf nerrors = n.transpose() * allnorms;
-	    p = Eigen::Vector3f::Zero(3);
-	    n = Eigen::Vector3f::Zero(3);
-	    for (int j=0; j<N; j++) {
-	      if (std::fabs(errors(j)) < threshold && nerrors(j) > ndot_min) {
-		p += allverts.col(j);
-		n += allnorms.col(j);
-		inliers++;
-	      }
+	  size_t N = mesh.GetNumVertices();
+	  if (N > 0) {
+	    std::uniform_int_distribution<size_t> dis(1, N);
+	    Eigen::Vector3f v0 = mesh.GetVertex((int) dis(generator));
+	    Eigen::Vector3f v1 = mesh.GetVertex((int) dis(generator));
+	    Eigen::Vector3f v2 = mesh.GetVertex((int) dis(generator));
+	    Eigen::Vector3f n = (v1-v0).cross(v2-v0).normalized();
+	    Eigen::Vector3f p = (v0+v1+v2)/3.0f;
+	    Eigen::Matrix3Xf allverts(3, N);
+	    Eigen::Matrix3Xf allnorms(3, N);
+	    for (int i=0; i < N; i++) {
+	      allverts.col(i) = mesh.GetVertex(i+1);
 	    }
-	    p /= inliers;
-	    n /= inliers;
-	    std::cout << "inliers: " << inliers << std::endl;
+	    for (int i=0; i < N; i++) {
+	      allnorms.col(i) = mesh.GetNormal(i+1);
+	    }
+	    const float threshold = 1.0f;
+	    const float ndot_min = -1.0f; //TODO: use this properly
+	    for (int i=0; i < 10; i++) {
+	      int inliers=0;
+	      std::vector<int> indices;
+	      Eigen::ArrayXf errors = n.transpose() * (allverts.colwise() - p);
+	      Eigen::ArrayXf nerrors = n.transpose() * allnorms;
+	      p = Eigen::Vector3f::Zero(3);
+	      n = Eigen::Vector3f::Zero(3);
+	      for (int j=0; j<N; j++) {
+		if (std::fabs(errors(j)) < threshold && nerrors(j) > ndot_min) {
+		  p += allverts.col(j);
+		  //n += allnorms.col(j);
+		  indices.push_back(j);
+		  inliers++;
+		}
+	      }
+	      p /= inliers;
+	      Eigen::Matrix3Xf inlierm(3, inliers);
+	      for (int j=0; j<inliers; j++) {
+		inlierm.col(j) = allverts.col(indices[j]);
+	      }
+	      inlierm = inlierm.colwise() - p;
+	      //build covariance matrix
+	      Eigen::Matrix3f cov = inlierm * inlierm.transpose() / inliers;
+	      Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> pca(cov);
+	      Eigen::Vector3f eigenvalues = pca.eigenvalues();
+	      Eigen::Matrix3f eigenvectors = pca.eigenvectors();
+	      std::cout << "eigenvalues: " << eigenvalues[0] << " " << eigenvalues[1] << " " << eigenvalues[2] << std::endl;
+	      Eigen::Vector3f e1;
+	      Eigen::Vector3f e2;
+	      float v1=std::numeric_limits<float>::lowest();
+	      float v2 = v1;
+	      for (int j=0; j<3; j++) {
+		if (eigenvalues[j] > v1) {
+		  v2 = v1;
+		  e2 = e1;
+		  v1 = eigenvalues[j];
+		  e1 = eigenvectors.col(j);
+		} else if (eigenvalues[j] > v2) {
+		  v2 = eigenvalues[j];
+		  e2 = eigenvectors.col(j);
+		}
+	      }
+	      n = e1.cross(e2).normalized();
+	      
+	      std::cout << "inliers: " << inliers << std::endl;
+	    }
+	    n.normalize();
+
+	    //create debug mesh
+	    OBJMesh<float> debugmesh;
+	    Eigen::Vector3f dup(1,0,0);
+	    Eigen::Vector3f left = dup.cross(n).normalized();
+	    Eigen::Vector3f right = left.cross(n);
+	    left *= 100;
+	    right *= 100;
+	    Eigen::Vector3f p11 = p+left+right;
+	    Eigen::Vector3f p10 = p+left-right;
+	    Eigen::Vector3f p00 = p-left-right;
+	    Eigen::Vector3f p01 = p-left+right;
+	    debugmesh.AddVertex(p11);
+	    debugmesh.AddVertex(p10);
+	    debugmesh.AddVertex(p00);
+	    debugmesh.AddVertex(p01);
+	    debugmesh.AddTri(1, 2, 3);
+	    debugmesh.AddTri(1, 3, 4);
+	    debugmesh.SaveOBJ("debug.obj");
+
+	    Eigen::Vector3f target = p+n;
+	    worldToCam = geom::lookAt(p, target, Eigen::Matrix<float, 3, 1>(0, 1, 0));
+	    camToWorld = worldToCam.inverse();
 	  }
-	  Eigen::Vector3f target = p+n;
-	  worldToCam = geom::lookAt(p, target, Eigen::Matrix<float, 3, 1>(0, 1, 0));
-	  camToWorld = worldToCam.inverse();
 	} else {
 
 	  std::cout << "transforming mesh" << std::endl;
@@ -518,11 +602,11 @@ int main(int argc, char** argv) {
                 pp[3] = 1;
                 return (camToWorld * pp)[1] < minHeight + floorEps;
 	  };
-            cv::Mat mask = createMask(depth_img, min_depth, max_depth, predfun, correction_factor);
+	  cv::Mat mask = createMask(depth_img, min_depth, max_depth, predfun, correction_factor, range_correction, fov);
             cv::imwrite(plane_mask_path, mask);
 
-	    cv::Mat depthwo = cv::imread(depthwo_filename, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
-	    cv::Mat maskwo = createMask(depthwo, min_depth, max_depth, predfun, correction_factor);
+	    cv::Mat depthwo = cv::imread(depthwo_filename, options);
+	    cv::Mat maskwo = createMask(depthwo, min_depth, max_depth, predfun, correction_factor, range_correction, fov);
 	    cv::imwrite(plane_maskwo_path, maskwo);
         }
 

@@ -4,13 +4,14 @@
 #include <opencv2/opencv.hpp>
 #include "OBJWriter.hpp"
 #include "CameraUtils.hpp"
+#include <string>
 
 template <class T, class PredFun>
-cv::Mat createMask(const cv::Mat &depth_img, T min_depth, T max_depth, PredFun f, float correction_factor=1);
+cv::Mat createMask(const cv::Mat &depth_img, T min_depth, T max_depth, PredFun f, T correction_factor=1, bool range_correction=true, T fov=45);
 
 template <class T, class PredFun>
-cv::Mat createMask(const cv::Mat &depth_img, T min_depth, T max_depth, PredFun f, float correction_factor) {
-    const T fov = static_cast<T>(45) / 180 * M_PI;
+cv::Mat createMask(const cv::Mat &depth_img, T min_depth, T max_depth, PredFun f, T correction_factor, bool range_correction, T fov) {
+    fov = fov / 180 * M_PI;
     const T cx = depth_img.cols / 2.0f;
     const T cy = depth_img.rows / 2.0f;
     const T constant_x = 2 * (tan(fov/static_cast<T>(2))) / depth_img.cols;
@@ -26,7 +27,8 @@ cv::Mat createMask(const cv::Mat &depth_img, T min_depth, T max_depth, PredFun f
             }
             T px = (u - cx) * constant_x;
             T py = -(v - cy) * constant_y;
-            depth /= sqrt(1+px*px+py*py);
+	    if (range_correction)
+	      depth /= sqrt(1+px*px+py*py);
 	    depth *= correction_factor;
             px *= depth;
             py *= depth;
@@ -38,10 +40,35 @@ cv::Mat createMask(const cv::Mat &depth_img, T min_depth, T max_depth, PredFun f
     return mask;
 }
 
+
+std::string type2str(int type) {
+  using namespace cv;
+  std::string r;
+
+  uchar depth = type & CV_MAT_DEPTH_MASK;
+  uchar chans = 1 + (type >> CV_CN_SHIFT);
+
+  switch ( depth ) {
+  case CV_8U:  r = "8U"; break;
+  case CV_8S:  r = "8S"; break;
+  case CV_16U: r = "16U"; break;
+  case CV_16S: r = "16S"; break;
+  case CV_32S: r = "32S"; break;
+  case CV_32F: r = "32F"; break;
+  case CV_64F: r = "64F"; break;
+  default:     r = "User"; break;
+  }
+
+  r += "C";
+  r += (chans+'0');
+
+  return r;
+}
+
 namespace {
     template<class T>
-    OBJMesh<T> createMesh(const cv::Mat depth_img, T min_depth, T max_depth, T occlusion_threshold, int format, float correction_factor) {
-        const T fov = static_cast<T>(45) / 180 * M_PI;
+    OBJMesh<T> createMesh(const cv::Mat depth_img, T min_depth, T max_depth, T occlusion_threshold, int format, T correction_factor, bool range_correction, T fov) {
+        fov = fov / 180 * M_PI;
         const T cx = depth_img.cols / 2.0f;
         const T cy = depth_img.rows / 2.0f;
         const T constant_x = 2 * (tan(fov / static_cast<T>(2))) / depth_img.cols;
@@ -52,24 +79,34 @@ namespace {
         T greatest_y = std::numeric_limits<T>::lowest();
         T smallest_y = std::numeric_limits<T>::max();
         int index = 1;
-        cv::Mat inds(depth_img.rows, depth_img.cols, format);
+	using namespace cv;
+        Mat inds(depth_img.rows, depth_img.cols, format);
         int discarded = 0;
-
         OBJMesh<T> mesh;
+	uchar mattype = depth_img.type() & CV_MAT_DEPTH_MASK;
+
+	std::cout << "element type: " << type2str(mattype) << std::endl;
 
         for (int v = 0; v < depth_img.rows; v++) {
             for (int u = 0; u < depth_img.cols; u++) {
-                T depth = depth_img.at<T>(v, u);
-                if (depth >= max_depth || depth <= min_depth) {
+	      T depth;
+	      switch(mattype) {
+	      case CV_8U:
+		depth = depth_img.at<uchar>(v, u); break;
+	      default:
+		depth = depth_img.at<T>(v, u); break;
+	      }
+	      //std::cout << "depth: " << depth << std::endl;
+	      if (depth >= max_depth || depth <= min_depth) {
                     discarded++;
                     inds.at<T>(v, u) = -1;
                     continue;
-                }
+	      }
 
                 T px = (u - cx) * constant_x;
                 T py = -(v - cy) * constant_y;
-
-                depth /= sqrt(1 + px * px + py * py);
+		if (range_correction)
+		  depth /= sqrt(1 + px * px + py * py);
                 depth *= correction_factor;
 
                 px *= depth;
@@ -97,6 +134,7 @@ namespace {
                   << ")" << std::endl;
 
         std::cout << "populating indices" << std::endl;
+	int discarded2 = 0;
         for (int v = 0; v < depth_img.rows - 1; v++) {
             for (int u = 0; u < depth_img.cols - 1; u++) {
                 int i00 = (int) round(inds.at<T>(v, u));
@@ -120,9 +158,11 @@ namespace {
                 maxdepth = std::max(maxdepth, depth01);
                 maxdepth = std::max(maxdepth, depth10);
                 maxdepth = std::max(maxdepth, depth11);
-                if (maxdepth - mindepth > occlusion_threshold) {
+		
+                /*if (maxdepth - mindepth > occlusion_threshold) {
+		  discarded2++;
                     continue;
-                }
+		    }*/
                 Eigen::Vector3i tri1(i00, i11, i01);
                 Eigen::Vector3i tri2(i00, i10, i11);
                 mesh.AddTri(tri1);
@@ -130,7 +170,7 @@ namespace {
 
             }
         }
-
+	std::cout << "discarded " << discarded2 << " faces based on occlusion threshold" << std::endl;
         return mesh;
     }
 }
@@ -147,18 +187,18 @@ namespace {
  * @return
  */
 template <class T>
-OBJMesh<T> createMesh(const cv::Mat depth_img, T min_depth, T max_depth, T occlusion_threshold, float correction_factor=1);
+OBJMesh<T> createMesh(const cv::Mat depth_img, T min_depth, T max_depth, T occlusion_threshold, T correction_factor=1, bool range_correction=true, T fov=45);
 
 template <>
-OBJMesh<float> createMesh<float>(const cv::Mat depth_img, float min_depth, float max_depth, float occlusion_threshold, float correction_factor) {
+OBJMesh<float> createMesh<float>(const cv::Mat depth_img, float min_depth, float max_depth, float occlusion_threshold, float correction_factor, bool range_correction, float fov) {
     std::cout << "using single precision" << std::endl;
-    return createMesh<float>(depth_img, min_depth, max_depth, occlusion_threshold, CV_32FC1, correction_factor);
+    return createMesh<float>(depth_img, min_depth, max_depth, occlusion_threshold, CV_32FC1, correction_factor, range_correction, fov);
 }
 
 template <>
-OBJMesh<double> createMesh<double>(const cv::Mat depth_img, double min_depth, double max_depth, double occlusion_threshold, float correction_factor) {
+OBJMesh<double> createMesh<double>(const cv::Mat depth_img, double min_depth, double max_depth, double occlusion_threshold, double correction_factor, bool range_correction, double fov) {
     std::cout << "using double precision" << std::endl;
-    return createMesh<double>(depth_img, min_depth, max_depth, occlusion_threshold, CV_64FC1, correction_factor);
+    return createMesh<double>(depth_img, min_depth, max_depth, occlusion_threshold, CV_64FC1, correction_factor, range_correction, fov);
 }
 
 #endif
