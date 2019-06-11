@@ -47,9 +47,9 @@ namespace {
         const T constant_x = 2 * (tan(fov / static_cast<T>(2))) / depth_img.cols;
         const T constant_y = constant_x; //assume uniform pinhole model
 
-        T greatest_z = std::numeric_limits<T>::min();
+        T greatest_z = std::numeric_limits<T>::lowest();
         T smallest_z = std::numeric_limits<T>::max();
-        T greatest_y = std::numeric_limits<T>::min();
+        T greatest_y = std::numeric_limits<T>::lowest();
         T smallest_y = std::numeric_limits<T>::max();
         int index = 1;
         cv::Mat inds(depth_img.rows, depth_img.cols, format);
