@@ -5,6 +5,80 @@
 #include "OBJWriter.hpp"
 #include "CameraUtils.hpp"
 #include <string>
+#include "typedefs.hpp"
+
+template <class T>
+int ransac(const OBJMesh<T> &mesh, std::default_random_engine &generator, Vector3<T> &p, Vector3<T> &n) {
+  size_t N = mesh.GetNumVertices();
+  if (N > 0) {
+    std::uniform_int_distribution<size_t> dis(1, N);
+    Vector3<T> v0 = mesh.GetVertex((int) dis(generator));
+    Vector3<T> v1 = mesh.GetVertex((int) dis(generator));
+    Vector3<T> v2 = mesh.GetVertex((int) dis(generator));
+    n = (v1-v0).cross(v2-v0).normalized();
+    p = (v0+v1+v2)/3.0f;
+    Matrix3X<T> allverts(3, N);
+    //Matrix3X<T> allnorms(3, N);
+    for (int i=0; i < N; i++) {
+      allverts.col(i) = mesh.GetVertex(i+1);
+    }
+    /*
+    for (int i=0; i < N; i++) {
+      allnorms.col(i) = mesh.GetNormal(i+1);
+      }*/
+    const T threshold = 1.0f;
+    int inliers;
+    for (int i=0; i < 10; i++) {
+      inliers=0;
+      std::vector<int> indices;
+      Eigen::ArrayXf errors = n.transpose() * (allverts.colwise() - p);
+      //Eigen::ArrayXf nerrors = n.transpose() * allnorms;
+      p = Vector3<T>::Zero(3);
+      n = Vector3<T>::Zero(3);
+      for (int j=0; j<N; j++) {
+	if (std::fabs(errors(j)) < threshold) {
+	  p += allverts.col(j);
+	  indices.push_back(j);
+	  inliers++;
+	}
+      }
+      p /= inliers;
+      Matrix3X<T> inlierm(3, inliers);
+      for (int j=0; j<inliers; j++) {
+	inlierm.col(j) = allverts.col(indices[j]);
+      }
+      inlierm = inlierm.colwise() - p;
+      //build covariance matrix
+      Matrix3X<T> cov = inlierm * inlierm.transpose() / inliers;
+      Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T, 3, 3>> pca(cov);
+      Vector3<T> eigenvalues = pca.eigenvalues();
+      Matrix3X<T> eigenvectors = pca.eigenvectors();
+      //std::cout << "eigenvalues: " << eigenvalues[0] << " " << eigenvalues[1] << " " << eigenvalues[2] << std::endl;
+      Vector3<T> e1;
+      Vector3<T> e2;
+      T v1=std::numeric_limits<T>::lowest();
+      T v2 = v1;
+      for (int j=0; j<3; j++) {
+	if (eigenvalues[j] > v1) {
+	  v2 = v1;
+	  e2 = e1;
+	  v1 = eigenvalues[j];
+	  e1 = eigenvectors.col(j);
+	} else if (eigenvalues[j] > v2) {
+	  v2 = eigenvalues[j];
+	  e2 = eigenvectors.col(j);
+	}
+      }
+      n = e1.cross(e2).normalized();
+	      
+      //std::cout << "inliers: " << inliers << std::endl;
+    }
+    n.normalize();
+    return inliers;
+  } else {
+    return 0;
+  }
+}
 
 template <class T, class PredFun>
 cv::Mat createMask(const cv::Mat &depth_img, T min_depth, T max_depth, PredFun f, T correction_factor=1, bool range_correction=true, T fov=45);

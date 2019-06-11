@@ -71,7 +71,14 @@ public:
     computed_normals = true;
   }
   
-  const Vector3<T> &GetNormal(int index) {
+  const Vector3<T> &GetNormal(int index) const {
+    if (!computed_normals) {
+      RecomputeNormals();
+    }
+    return normals[index-1];
+  }
+
+  Vector3<T> &GetNormal(int index) {
     if (!computed_normals) {
       RecomputeNormals();
     }
