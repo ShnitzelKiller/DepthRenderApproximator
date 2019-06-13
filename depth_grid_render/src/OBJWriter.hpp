@@ -7,6 +7,38 @@
 #include <Eigen/Dense>
 #include "typedefs.hpp"
 
+
+template<typename T>
+struct PlaneTest {
+  PlaneTest(T val, std::vector<Vector3<T>> &vertices, Vector3<T> p, Vector3<T> n, T ang=90) : val_(val), vertices_(vertices), p_(p), n_(n) {
+    tan2ang_ = tan(ang/360*M_PI);
+    tan2ang_*=tan2ang_;
+  }
+  bool operator()(Eigen::Vector3i &element) {
+    for (int i=0; i<3; i++) {
+      if (std::fabs((vertices_[element[i]-1] - p_).dot(n_)) >= val_) {
+	return false;
+      }
+    }
+    Vector3<T> e1 = vertices_[element[1]-1] - vertices_[element[0]-1];
+    Vector3<T> e2 = vertices_[element[2]-1] - vertices_[element[1]-1];
+    Vector3<T> n = e1.cross(e2);
+    n.normalize();
+    T dot = n.dot(n_);
+    T zz = dot*dot;
+    T xx = 1 - zz;
+    if (xx/zz < tan2ang_) {
+      return true;
+    }
+    return false;
+  }
+private:
+  T val_;
+  T tan2ang_;
+  Vector3<T> p_, n_;
+  std::vector<Vector3<T>> &vertices_;
+};
+
 template<typename T>
 struct YTest {
   YTest(T val, std::vector<Vector3<T>> &vertices, bool strict, T ang=90) : val_(val), vertices_(vertices), strict_(strict) {
@@ -162,6 +194,13 @@ public:
 
   void DeleteBelowY(T threshold, bool strict = true, float angle = 90) {
     YTest<T> cond(threshold, verts, strict, angle);
+    auto search = std::remove_if(tris.begin(), tris.end(), cond);
+    tris.erase(search, tris.end());
+    computed_normals = false;
+  }
+
+  void DeletePlane(T threshold, Vector3<T> &p, Vector3<T> &n, float angle = 90) {
+    PlaneTest<T> cond(threshold, verts, p, n, angle);
     auto search = std::remove_if(tris.begin(), tris.end(), cond);
     tris.erase(search, tris.end());
     computed_normals = false;

@@ -8,7 +8,7 @@
 #include "typedefs.hpp"
 
 template <class T>
-int ransac(const OBJMesh<T> &mesh, std::default_random_engine &generator, Vector3<T> &p, Vector3<T> &n) {
+int ransac(const OBJMesh<T> &mesh, T threshold, std::default_random_engine &generator, Vector3<T> &p, Vector3<T> &n) {
   size_t N = mesh.GetNumVertices();
   if (N > 0) {
     std::uniform_int_distribution<size_t> dis(1, N);
@@ -26,7 +26,6 @@ int ransac(const OBJMesh<T> &mesh, std::default_random_engine &generator, Vector
     for (int i=0; i < N; i++) {
       allnorms.col(i) = mesh.GetNormal(i+1);
       }*/
-    const T threshold = 1.0f;
     int inliers;
     for (int i=0; i < 10; i++) {
       inliers=0;

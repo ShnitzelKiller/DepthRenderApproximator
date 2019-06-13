@@ -18,10 +18,10 @@
 enum SceneMode {normal, flip, specular, directDiffuse, directSpec, texture_only, texture_inf, plane_only};
 
 void usage(char* program_name) {
-    std::cout << "Usage: " << program_name << " filename envmap alpha maskfilename [-theta <value>] [-phi <value>] [-ltheta <value> -lphi <value>] [-c <occlusion_threshold>] [-norange] [-d <displacement_factor>] [-output_masks 1] [-s <scene_format_version>] [-correction <fac>] [-planetex <plane_texture_filename>] [-r <resize_factor>] [-randang <angle_randomness_magnitude_in_degrees>] [-randalpha <std>] [-nomodel 1] [-width <w>] [-height <h>] [-scenes (1|0){13}] [-save <name>]" << std::endl;
+    std::cout << "Usage: " << program_name << " filename envmap alpha maskfilename [-theta <value>] [-phi <value>] [-ltheta <value> -lphi <value>] [-c <occlusion threshold>] [-rt <ransac threshold>] [-nt <face angle threshold>] [-envscale <value>] [-norange 1] [-d <displacement factor>] [-output masks 1] [-s <scene format version>] [-correction <fac>] [-planetex <plane texture filename>] [-r <resize factor>] [-randang <angle randomness magnitude in degrees>] [-randalpha <std>] [-nomodel 1] [-width <w>] [-height <h>] [-scenes (1|0){13}] [-save <name>]" << std::endl;
 }
 
-std::shared_ptr<XMLElement> buildScene(int width, int height, float fov, std::string envmap, float alpha, const Eigen::Matrix<float, 4, 4> &mat, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, SceneMode mode = normal, std::string planeTexture="") {
+std::shared_ptr<XMLElement> buildScene(int width, int height, float fov, std::string envmap, float alpha, const Eigen::Matrix<float, 4, 4> &mat, float plane_height, std::string scene_version = "0.6.0", bool pointlight = false, Eigen::Vector3f light_pos = Eigen::Vector3f(), std::string meshPath="", std::string meshTexture="", Eigen::Vector3f random_axis=Eigen::Vector3f(), float random_angle=0, Eigen::Vector3f random_axis_light=Eigen::Vector3f(), float random_angle_light=0, float envscale=1, SceneMode mode = normal, std::string planeTexture="") {
     using namespace std;
     auto frame_matrix = XMLElement::Matrix(mat);
 
@@ -130,6 +130,7 @@ std::shared_ptr<XMLElement> buildScene(int width, int height, float fov, std::st
     if (mode != specular && mode != texture_only && mode != texture_inf && mode != plane_only) {
         auto emitter = make_shared<XMLElement>("emitter", "envmap");
         emitter->AddChild(make_shared<XMLElement>("string", "filename", envmap));
+	emitter->AddChild(make_shared<XMLElement>("float", "scale", to_string(envscale)));
 	auto env_transform = XMLElement::Transform("toWorld");
 	env_transform->AddChild(frame_matrix);
         if (random_angle != 0) {
@@ -188,7 +189,7 @@ int main(int argc, char** argv) {
 
     float scale_factor = 0.5;
     const float floorEps = 5e-2;
-    const float floor_normal_angle_range = 60;
+    float floor_normal_angle_range = 60;
     std::string texture_image = "texture.png";
     std::string plane_texture = "placeholder.jpg";
     bool range_correction=true;
@@ -200,8 +201,10 @@ int main(int argc, char** argv) {
     bool use_camera_angle = false;
     float light_theta = 0;
     float light_phi = 0;
+    float envscale = 1.0f;
     const float light_radius = 52;
     float occlusion_threshold = 1;
+    float ransac_threshold = 1;
     float max_depth = std::numeric_limits<float>::max();
     float min_depth = std::numeric_limits<float>::lowest();
     float displacement = 0;
@@ -233,11 +236,20 @@ int main(int argc, char** argv) {
     envmap = parser.getPositionalArgument(1);
     alpha = std::stof(parser.getPositionalArgument(2)) / 10000.0f;
     mask_filename = parser.getPositionalArgument(3);
-
+    if (parser.cmdOptionExists("envscale")) {
+      envscale = std::stof(parser.getCmdOption("envscale"));
+    }
+    if (parser.cmdOptionExists("nt")) {
+      floor_normal_angle_range = std::stof(parser.getCmdOption("nt"));
+    }
     if (parser.cmdOptionExists("fov")) {
       fov = std::stof(parser.getCmdOption("fov"));
     }
     std::cout << "fov: " << fov << std::endl;
+
+    if (parser.cmdOptionExists("rt")) {
+      ransac_threshold = std::stof(parser.getCmdOption("rt"));
+    }
 
     if (parser.cmdOptionExists("norange")) {
       std::cout << "assuming depth input" << std::endl;
@@ -260,6 +272,8 @@ int main(int argc, char** argv) {
       use_camera_angle = true;
       theta = std::stof(parser.getCmdOption("theta")) / 180.0f * (float) M_PI;
       phi = std::stof(parser.getCmdOption("phi")) / 180.0f * (float) M_PI;
+    } else {
+      std::cout << "ransac threshold: " << ransac_threshold << std::endl;
     }
 
     if (parser.cmdOptionExists("ltheta") && parser.cmdOptionExists("lphi")) {
@@ -481,9 +495,9 @@ int main(int argc, char** argv) {
 	  Eigen::Vector3f p(0,0,0);
 	  
 	  int maxinliers = 0;
-	  for (int i=0; i<4; i++) {
+	  for (int i=0; i<8; i++) {
 	    Eigen::Vector3f n0,p0;
-	    int inliers = ransac(mesh, generator, p0, n0);
+	    int inliers = ransac(mesh, ransac_threshold, generator, p0, n0);
 	    std::cout << "inliers: " << inliers << std::endl;
 	    if (inliers > maxinliers) {
 	      maxinliers = inliers;
@@ -511,10 +525,19 @@ int main(int argc, char** argv) {
 	  debugmesh.AddTri(1, 3, 4);
 	  debugmesh.SaveOBJ("debug.obj");
 
+	  //create transformation
 	  Eigen::Vector3f target = p+n;
-
-	  worldToCam = geom::lookAt(p, target, Eigen::Matrix<float, 3, 1>(0, 1, 0));
-	    camToWorld = worldToCam.inverse();
+	  Eigen::Matrix4f temp = geom::lookAt(p, target, Eigen::Matrix<float, 3, 1>(0, 1, 0));
+	  worldToCam.col(0) = temp.col(1);
+	  worldToCam.col(1) = temp.col(2);
+	  worldToCam.col(2) = temp.col(0);
+	  worldToCam.col(3) = temp.col(3);
+	  worldToCam.row(3) = temp.row(3);
+	  camToWorld = worldToCam.inverse();
+	  
+	  //remove mesh elements inside floor
+	  mesh.DeletePlane(ransac_threshold, p, n, floor_normal_angle_range);
+	  meshwo.DeletePlane(ransac_threshold, p, n, floor_normal_angle_range);
 
 	} else {
 
@@ -581,7 +604,7 @@ int main(int argc, char** argv) {
 
       auto scene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight, scene_version,
                                 light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
-                                random_angle, random_axis_light, random_angle_light);
+                                random_angle, random_axis_light, random_angle_light, envscale);
         scene->SaveXML(filenames[0]);
         std::cout << filenames[0] << std::endl;
     }
@@ -590,7 +613,7 @@ int main(int argc, char** argv) {
 
         auto texscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight, scene_version,
                                    light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, texture_image,
-                                   random_axis, random_angle, random_axis_light, random_angle_light);
+                                   random_axis, random_angle, random_axis_light, random_angle_light, envscale);
         texscene->SaveXML(filenames[1]);
         std::cout << filenames[1] << std::endl;
     }
@@ -599,7 +622,7 @@ int main(int argc, char** argv) {
 
         auto woscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight, scene_version,
                                   light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, texture_image,
-                                  random_axis, random_angle, random_axis_light, random_angle_light);
+                                  random_axis, random_angle, random_axis_light, random_angle_light, envscale);
         woscene->SaveXML(filenames[2]);
         std::cout << filenames[2] << std::endl;
     }
@@ -608,7 +631,7 @@ int main(int argc, char** argv) {
 
         auto flippedscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight,
                                        scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "",
-                                       random_axis, random_angle, random_axis_light, random_angle_light, flip);
+                                       random_axis, random_angle, random_axis_light, random_angle_light, envscale, flip);
         flippedscene->SaveXML(filenames[3]);
         std::cout << filenames[3] << std::endl;
     }
@@ -617,7 +640,7 @@ int main(int argc, char** argv) {
 
         auto flippedwoscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight,
                                          scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path,
-                                         "", random_axis, random_angle, random_axis_light, random_angle_light,
+                                         "", random_axis, random_angle, random_axis_light, random_angle_light, envscale,
                                          flip);
         flippedwoscene->SaveXML(filenames[4]);
         std::cout << filenames[4] << std::endl;
@@ -627,7 +650,7 @@ int main(int argc, char** argv) {
 
         auto specscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight,
                                        scene_version, light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path,
-                                       "", random_axis, random_angle, random_axis_light, random_angle_light,
+                                       "", random_axis, random_angle, random_axis_light, random_angle_light, envscale,
                                        specular);
         specscene->SaveXML(filenames[5]);
         std::cout << filenames[5] << std::endl;
@@ -637,7 +660,7 @@ int main(int argc, char** argv) {
 
         auto specwoscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight, scene_version,
                                       light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
-                                      random_angle, random_axis_light, random_angle_light, specular);
+                                      random_angle, random_axis_light, random_angle_light, envscale, specular);
         specwoscene->SaveXML(filenames[6]);
         std::cout << filenames[6] << std::endl;
     }
@@ -646,7 +669,7 @@ int main(int argc, char** argv) {
 
         auto directspecscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight, scene_version,
                                       light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
-                                      random_angle, random_axis_light, random_angle_light, directSpec);
+                                      random_angle, random_axis_light, random_angle_light, envscale, directSpec);
         directspecscene->SaveXML(filenames[7]);
         std::cout << filenames[7] << std::endl;
     }
@@ -655,7 +678,7 @@ int main(int argc, char** argv) {
 
         auto directspecwoscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight, scene_version,
                                           light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
-                                          random_angle, random_axis_light, random_angle_light, directSpec);
+                                          random_angle, random_axis_light, random_angle_light, envscale, directSpec);
         directspecwoscene->SaveXML(filenames[8]);
         std::cout << filenames[8] << std::endl;
     }
@@ -664,7 +687,7 @@ int main(int argc, char** argv) {
 
         auto directdiffusescene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight, scene_version,
                                           light, Eigen::Vector3f(lightX, lightY, lightZ), mesh_path, "", random_axis,
-                                          random_angle, random_axis_light, random_angle_light, directDiffuse);
+                                          random_angle, random_axis_light, random_angle_light, envscale, directDiffuse);
         directdiffusescene->SaveXML(filenames[9]);
         std::cout << filenames[9] << std::endl;
     }
@@ -672,21 +695,21 @@ int main(int argc, char** argv) {
     if (scene_mask[10] != '0') {
         auto directdiffusewoscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight, scene_version,
                                             light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
-                                            random_angle, random_axis_light, random_angle_light, directDiffuse);
+                                            random_angle, random_axis_light, random_angle_light, envscale, directDiffuse);
         directdiffusewoscene->SaveXML(filenames[10]);
         std::cout << filenames[10] << std::endl;
     }
     if (scene_mask[11] != '0') {
       auto planeonlyscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight, scene_version,
                                              light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
-                                             random_angle, random_axis_light, random_angle_light, texture_only, plane_texture);
+                                             random_angle, random_axis_light, random_angle_light, envscale, texture_only, plane_texture);
       planeonlyscene->SaveXML(filenames[11]);
       std::cout << filenames[11] << std::endl;
     }
     if (scene_mask[12] != '0') {
         auto texonlyscene = buildScene(original_width, original_height, fov, envmap, alpha, worldToCam, minHeight, scene_version,
                                                light, Eigen::Vector3f(lightX, lightY, lightZ), meshwo_path, "", random_axis,
-                                               random_angle, random_axis_light, random_angle_light, texture_inf, plane_texture);
+                                               random_angle, random_axis_light, random_angle_light, envscale, texture_inf, plane_texture);
         texonlyscene->SaveXML(filenames[12]);
         std::cout << filenames[12] << std::endl;
     }
